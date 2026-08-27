@@ -1,8 +1,8 @@
 /**
  * CONFIGURACIÓN DE LA APP — EDITAR ESTO DESPUÉS DE DESPLEGAR EL BACKEND
  * ---------------------------------------------------------------------
- * 1) APPS_SCRIPT_URL: https://script.google.com/macros/s/AKfycbyIYSGf2JgRoPEi23CFNQ4nJX28o9BmZ9Kt7OpTub-njd9NUqmwMePYHSnzssCbb25U/exec
- * 2) SHARED_TOKEN:71421376
+ * 1) APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyIYSGf2JgRoPEi23CFNQ4nJX28o9BmZ9Kt7OpTub-njd9NUqmwMePYHSnzssCbb25U/exec"
+ * 2) SHARED_TOKEN:"71421376"
  *
  * No subas un token real a un repositorio público sin estar consciente
  * de que cualquiera que vea el código fuente de la página puede leerlo.
@@ -11,8 +11,8 @@
  * "Seguridad" si más adelante quieren algo más robusto.
  */
 window.APP_CONFIG = {
-  APPS_SCRIPT_URL: https://script.google.com/macros/s/AKfycbyIYSGf2JgRoPEi23CFNQ4nJX28o9BmZ9Kt7OpTub-njd9NUqmwMePYHSnzssCbb25U/exec,
-  SHARED_TOKEN: 71421376,
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyIYSGf2JgRoPEi23CFNQ4nJX28o9BmZ9Kt7OpTub-njd9NUqmwMePYHSnzssCbb25U/exec",
+  SHARED_TOKEN: "71421376",
 
   // Se usan SOLO si el backend no responde (primera prueba sin desplegar aún,
   // o sin señal). En cuanto el backend esté configurado, la app siempre
