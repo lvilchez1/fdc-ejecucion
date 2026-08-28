@@ -896,6 +896,7 @@
   function renderDone() {
     root.innerHTML = "";
     root.appendChild(el("div", { class: "done-screen" }, [
+      el("img", { src: "assets/logo-white.png", alt: "Flor de Caña", class: "done-logo" }),
       el("div", { class: "done-check" }, ["✓"]),
       el("h2", { class: "step-title" }, ["Visita registrada"]),
       el("p", { class: "step-hint" }, ["Se guardó en Google Sheets y las fotos en Drive."]),
@@ -931,7 +932,7 @@
     root.innerHTML = "";
 
     const header = el("div", { class: "app-header" }, [
-      el("div", { class: "brand" }, [el("span", { class: "brand-mark" }, ["FLOR DE CAÑA"]), el("span", { class: "brand-sub" }, ["Ejecución PDV"])]),
+      el("div", { class: "brand" }, [el("img", { src: "assets/logo-white.png", alt: "Flor de Caña", class: "brand-logo" }), el("span", { class: "brand-sub" }, ["Ejecución PDV"])]),
       el("div", { class: "progress-track" }, [el("div", { class: "progress-fill", style: "width:" + Math.round(((state.stepIndex + 1) / steps.length) * 100) + "%" })]),
       el("div", { class: "progress-label" }, ["Paso " + (state.stepIndex + 1) + " de " + steps.length + " · " + STEP_LABELS[stepName]])
     ]);

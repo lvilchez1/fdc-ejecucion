@@ -58,15 +58,10 @@ html, body {
 }
 .brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
 }
-.brand-mark {
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  font-size: 20px;
-  color: var(--white);
-}
+.brand-logo { height: 26px; width: auto; display: block; }
 .brand-sub {
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -315,11 +310,13 @@ input:focus, select:focus, button:focus-visible {
 .btn-primary:disabled { background: var(--tint-30); color: var(--tint-75); }
 .btn-secondary { flex: 0 0 96px; background: transparent; color: var(--white); border: 1.5px solid var(--tint-30); }
 
-/* Error/éxito: solo blanco/003D4D + ícono, sin rojo/verde, a pedido */
+/* Error: rojo como única excepción a los 2 colores (confirmado por el cliente).
+   Éxito/info se mantienen en blanco/003D4D. */
+:root { --red: #C0392B; }
 .error-banner {
-  background: var(--tint-08);
-  border: 1.5px solid var(--white);
-  color: var(--white);
+  background: rgba(192,57,43,0.14);
+  border: 1.5px solid var(--red);
+  color: #F5D6D2;
   border-radius: var(--radius);
   padding: 12px 14px;
   font-size: 13.5px;
@@ -348,6 +345,7 @@ input:focus, select:focus, button:focus-visible {
   text-align: center;
   padding: 40px 24px;
 }
+.done-logo { height: 40px; width: auto; margin-bottom: 22px; }
 .done-check {
   width: 72px; height: 72px;
   border-radius: 50%;
