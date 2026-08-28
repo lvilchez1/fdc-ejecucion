@@ -1,8 +1,11 @@
 /**
  * CONFIGURACIÓN DE LA APP — EDITAR ESTO DESPUÉS DE DESPLEGAR EL BACKEND
  * ---------------------------------------------------------------------
- * 1) APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyIYSGf2JgRoPEi23CFNQ4nJX28o9BmZ9Kt7OpTub-njd9NUqmwMePYHSnzssCbb25U/exec"
- * 2) SHARED_TOKEN:"71421376"
+ * 1) APPS_SCRIPT_URL: la URL que te da Google al desplegar Code.gs como
+ *    "Aplicación web" (termina en /exec).
+ * 2) SHARED_TOKEN: una clave que TÚ inventas. Debe ser EXACTAMENTE igual
+ *    a la constante TOKEN dentro de Code.gs. Sirve para que nadie más
+ *    en internet pueda escribir en tu Google Sheet / Drive.
  *
  * No subas un token real a un repositorio público sin estar consciente
  * de que cualquiera que vea el código fuente de la página puede leerlo.
@@ -24,5 +27,6 @@ window.APP_CONFIG = {
     "FDC 7 1000", "FDC 12 750", "FDC ECO 750", "FDC 18 750", "FDC 130 750", "FDC 25 750"
   ],
   FALLBACK_CLIENTES: [],
-  FALLBACK_EJECUTIVOS: []
+  FALLBACK_EJECUTIVOS: [],
+  FALLBACK_CODISTRIBUIDORES: []
 };
