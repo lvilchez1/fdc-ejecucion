@@ -1,37 +1,30 @@
 /*
-  DIRECCIÓN DE DISEÑO
-  -------------------
-  Esto es una herramienta de campo, no una landing de marketing: la usa
-  un ejecutivo de pie en una barra, con una mano ocupada, señal de datos
-  débil y poca luz. Prioridades en orden: legible al sol, tocable con
-  pulgar grande, cero dependencias externas (sin CDN de fuentes: si no
-  hay señal, la fuente de sistema igual carga instantáneo).
+  PALETA — 2 colores, a pedido: blanco y Pantone HEX 003D4D (petróleo/teal
+  oscuro). Todo lo demás (bordes, superficies, estados deshabilitados) son
+  mezclas de opacidad de esos mismos 2 colores, no tonos nuevos.
 
-  Paleta (inspirada en ron añejado / caña de azúcar, no genérica-IA):
-    --ink:        #1B140D  fondo, casi negro con base cálida (barril tostado)
-    --paper:      #F4EEE1  texto/superficies claras (etiqueta de caña)
-    --amber-700:  #7A3B12  acento profundo (ron oscuro)
-    --amber-500:  #C97B2E  acento activo / foco (ron añejo al trasluz)
-    --amber-300:  #E8B36B  hover / bordes suaves
-    --green-ok:   #3F7A4E  confirmaciones
-    --red-warn:   #B03A2E  errores, bloqueos
+  Nota de diseño: normalmente error/éxito se marcan con rojo/verde. Aquí
+  se resuelven solo con blanco/003D4D + íconos (⚠ para error, ✓ para
+  éxito) y contraste de borde, para respetar el límite de 2 colores. Si
+  se prefiere mantener rojo para errores como única excepción, es un
+  cambio de una línea.
 
-  Firma visual: un rayado diagonal fino (motivo de "marca de prueba" de
-  barril / libro de registro de destilería) usado con moderación como
-  divisor entre secciones y en la barra de progreso — no como decoración
-  suelta, encierra la idea de "registro verificado".
+  Firma visual: el rayado diagonal fino se mantiene como "marca de
+  registro verificado" entre secciones, ahora en blanco sobre 003D4D.
 */
 
 :root {
-  --ink: #1B140D;
-  --ink-soft: #2A2016;
-  --paper: #F4EEE1;
-  --paper-dim: #D9CFBB;
-  --amber-700: #7A3B12;
-  --amber-500: #C97B2E;
-  --amber-300: #E8B36B;
-  --green-ok: #3F7A4E;
-  --red-warn: #B03A2E;
+  --dark: #003D4D;
+  --white: #FFFFFF;
+
+  /* Mezclas blanco+003D4D en distintas proporciones, para jerarquía
+     visual sin salir de los 2 colores base. */
+  --tint-08: #144D5B;  /* superficies sutiles (inputs, tarjetas) */
+  --tint-16: #295C69;  /* bordes sutiles */
+  --tint-30: #4D7782;  /* bordes fuertes / hover / disabled */
+  --tint-55: #8CA8AF;  /* texto atenuado sobre fondo oscuro */
+  --tint-75: #BFCFD3;  /* texto secundario / hints */
+
   --radius: 14px;
   --tap: 52px;
   font-size: 16px;
@@ -42,8 +35,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--dark);
+  color: var(--white);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   min-height: 100%;
   overscroll-behavior-y: contain;
@@ -61,7 +54,7 @@ html, body {
 /* ---------- Header / marca ---------- */
 .app-header {
   padding: 18px 20px 14px;
-  border-bottom: 1px solid rgba(232,179,107,0.18);
+  border-bottom: 1px solid var(--tint-16);
 }
 .brand {
   display: flex;
@@ -72,13 +65,13 @@ html, body {
   font-weight: 800;
   letter-spacing: -0.02em;
   font-size: 20px;
-  color: var(--amber-300);
+  color: var(--white);
 }
 .brand-sub {
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--paper-dim);
+  color: var(--tint-75);
 }
 
 /* Barra de progreso: rayado diagonal = "registro en curso" */
@@ -88,24 +81,22 @@ html, body {
   border-radius: 4px;
   background: repeating-linear-gradient(
     135deg,
-    rgba(244,238,225,0.06) 0px,
-    rgba(244,238,225,0.06) 4px,
-    rgba(244,238,225,0.14) 4px,
-    rgba(244,238,225,0.14) 8px
+    var(--tint-08) 0px, var(--tint-08) 4px,
+    var(--tint-16) 4px, var(--tint-16) 8px
   );
   overflow: hidden;
   position: relative;
 }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--amber-700), var(--amber-500));
+  background: var(--white);
   border-radius: 4px;
   transition: width 220ms ease;
 }
 .progress-label {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--paper-dim);
+  color: var(--tint-75);
   letter-spacing: 0.03em;
 }
 
@@ -121,28 +112,24 @@ html, body {
   font-weight: 800;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
+  color: var(--white);
 }
 .step-hint {
   font-size: 14px;
-  color: var(--paper-dim);
+  color: var(--tint-75);
   margin: 0 0 20px;
   line-height: 1.4;
 }
 
-.field {
-  margin-bottom: 22px;
-}
+.field { margin-bottom: 22px; }
 .field-label {
   display: block;
   font-size: 14px;
   font-weight: 700;
   margin-bottom: 8px;
-  color: var(--paper);
+  color: var(--white);
 }
-.field-required::after {
-  content: " *";
-  color: var(--amber-300);
-}
+.field-required::after { content: " *"; color: var(--white); }
 
 input[type="text"],
 input[type="number"],
@@ -152,14 +139,15 @@ select {
   min-height: var(--tap);
   padding: 12px 14px;
   border-radius: var(--radius);
-  border: 1.5px solid rgba(232,179,107,0.28);
-  background: var(--ink-soft);
-  color: var(--paper);
+  border: 1.5px solid var(--tint-30);
+  background: var(--tint-08);
+  color: var(--white);
   font-size: 16px;
 }
-input::placeholder { color: rgba(244,238,225,0.4); }
+input::placeholder { color: var(--tint-55); }
+input:disabled { opacity: 0.5; }
 input:focus, select:focus, button:focus-visible {
-  outline: 3px solid var(--amber-300);
+  outline: 3px solid var(--white);
   outline-offset: 1px;
 }
 
@@ -170,12 +158,12 @@ input:focus, select:focus, button:focus-visible {
   background: repeating-linear-gradient(
     135deg,
     transparent 0px, transparent 5px,
-    rgba(232,179,107,0.35) 5px, rgba(232,179,107,0.35) 6px
+    var(--tint-30) 5px, var(--tint-30) 6px
   );
   border-radius: 2px;
 }
 
-/* Chips / checklist de SKUs */
+/* Chips / checklist de SKUs / tarjetas de opción única (rutina) */
 .chip-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -191,20 +179,18 @@ input:focus, select:focus, button:focus-visible {
   min-height: var(--tap);
   padding: 10px 14px;
   border-radius: var(--radius);
-  border: 1.5px solid rgba(232,179,107,0.22);
-  background: var(--ink-soft);
+  border: 1.5px solid var(--tint-16);
+  background: var(--tint-08);
+  color: var(--white);
   cursor: pointer;
   user-select: none;
 }
-.chip input { accent-color: var(--amber-500); width: 20px; height: 20px; flex: none; }
+.chip input { accent-color: var(--white); width: 20px; height: 20px; flex: none; }
 .chip.checked {
-  border-color: var(--amber-500);
-  background: rgba(201,123,46,0.14);
+  border-color: var(--white);
+  background: var(--tint-30);
 }
-.chip.disabled {
-  opacity: 0.35;
-  pointer-events: none;
-}
+.chip.disabled { opacity: 0.35; pointer-events: none; }
 .chip-text { font-size: 14.5px; }
 
 /* Si/No/No aplica segmentado */
@@ -212,47 +198,40 @@ input:focus, select:focus, button:focus-visible {
   display: flex;
   border-radius: var(--radius);
   overflow: hidden;
-  border: 1.5px solid rgba(232,179,107,0.28);
+  border: 1.5px solid var(--tint-30);
 }
 .seg button {
   flex: 1;
   min-height: var(--tap);
   border: none;
   background: transparent;
-  color: var(--paper);
+  color: var(--white);
   font-size: 14.5px;
   font-weight: 600;
-  border-right: 1px solid rgba(232,179,107,0.2);
+  border-right: 1px solid var(--tint-16);
 }
 .seg button:last-child { border-right: none; }
-.seg button.active {
-  background: var(--amber-500);
-  color: var(--ink);
-}
+.seg button.active { background: var(--white); color: var(--dark); }
 
 /* ---------- Cámara ---------- */
 .photo-slot {
-  border: 1.5px dashed rgba(232,179,107,0.4);
+  border: 1.5px dashed var(--tint-30);
   border-radius: var(--radius);
   padding: 16px;
   text-align: center;
 }
 .photo-slot.filled {
   border-style: solid;
-  border-color: var(--green-ok);
+  border-color: var(--white);
   padding: 0;
   overflow: hidden;
 }
-.photo-slot img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
+.photo-slot img { display: block; width: 100%; height: auto; }
 .photo-meta {
   font-size: 12px;
-  color: var(--paper-dim);
+  color: var(--tint-75);
   padding: 8px 10px;
-  background: rgba(0,0,0,0.25);
+  background: var(--tint-08);
 }
 .camera-btn {
   display: inline-flex;
@@ -262,8 +241,8 @@ input:focus, select:focus, button:focus-visible {
   padding: 0 18px;
   border-radius: 999px;
   border: none;
-  background: var(--amber-500);
-  color: var(--ink);
+  background: var(--white);
+  color: var(--dark);
   font-weight: 700;
   font-size: 14.5px;
 }
@@ -300,14 +279,14 @@ input:focus, select:focus, button:focus-visible {
   font-weight: 700;
   font-size: 15px;
 }
-.shutter { background: var(--paper); color: var(--ink); min-width: 120px; }
-.cam-cancel { background: rgba(255,255,255,0.15); color: var(--paper); }
+.shutter { background: var(--white); color: var(--dark); min-width: 120px; }
+.cam-cancel { background: rgba(255,255,255,0.15); color: var(--white); }
 .camera-badge {
   position: absolute;
   top: calc(14px + env(safe-area-inset-top));
   left: 16px; right: 16px;
   font-size: 12px;
-  color: #fff;
+  color: var(--white);
   background: rgba(0,0,0,0.45);
   padding: 8px 10px;
   border-radius: 8px;
@@ -319,7 +298,7 @@ input:focus, select:focus, button:focus-visible {
   position: sticky;
   bottom: 0;
   padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
-  background: linear-gradient(0deg, var(--ink) 60%, rgba(27,20,13,0));
+  background: linear-gradient(0deg, var(--dark) 60%, rgba(0,61,77,0));
   display: flex;
   gap: 10px;
 }
@@ -332,24 +311,26 @@ input:focus, select:focus, button:focus-visible {
   font-size: 16px;
   letter-spacing: 0.01em;
 }
-.btn-primary { background: var(--amber-500); color: var(--ink); }
-.btn-primary:disabled { background: #5b5344; color: rgba(0,0,0,0.4); }
-.btn-secondary { flex: 0 0 96px; background: transparent; color: var(--paper); border: 1.5px solid rgba(232,179,107,0.3); }
+.btn-primary { background: var(--white); color: var(--dark); }
+.btn-primary:disabled { background: var(--tint-30); color: var(--tint-75); }
+.btn-secondary { flex: 0 0 96px; background: transparent; color: var(--white); border: 1.5px solid var(--tint-30); }
 
+/* Error/éxito: solo blanco/003D4D + ícono, sin rojo/verde, a pedido */
 .error-banner {
-  background: rgba(176,58,46,0.14);
-  border: 1.5px solid var(--red-warn);
-  color: #F3C9C3;
+  background: var(--tint-08);
+  border: 1.5px solid var(--white);
+  color: var(--white);
   border-radius: var(--radius);
   padding: 12px 14px;
   font-size: 13.5px;
   margin-bottom: 16px;
   line-height: 1.4;
 }
+.error-banner::before { content: "⚠ "; font-weight: 800; }
 .info-banner {
-  background: rgba(63,122,78,0.14);
-  border: 1.5px solid var(--green-ok);
-  color: #C9E6CF;
+  background: var(--tint-08);
+  border: 1.5px dashed var(--white);
+  color: var(--white);
   border-radius: var(--radius);
   padding: 12px 14px;
   font-size: 13.5px;
@@ -370,9 +351,11 @@ input:focus, select:focus, button:focus-visible {
 .done-check {
   width: 72px; height: 72px;
   border-radius: 50%;
-  background: var(--green-ok);
+  background: var(--white);
+  color: var(--dark);
   display: flex; align-items: center; justify-content: center;
   font-size: 34px;
+  font-weight: 800;
   margin-bottom: 18px;
 }
 .summary-row {
@@ -380,11 +363,11 @@ input:focus, select:focus, button:focus-visible {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(232,179,107,0.14);
+  border-bottom: 1px solid var(--tint-16);
   font-size: 13.5px;
 }
-.summary-row .k { color: var(--paper-dim); }
-.summary-row .v { text-align: right; font-weight: 600; }
+.summary-row .k { color: var(--tint-75); }
+.summary-row .v { text-align: right; font-weight: 600; color: var(--white); }
 
 .searchbox { position: relative; }
 .searchbox-list {
@@ -394,8 +377,8 @@ input:focus, select:focus, button:focus-visible {
   left: 0; right: 0;
   max-height: 240px;
   overflow-y: auto;
-  background: var(--ink-soft);
-  border: 1.5px solid rgba(232,179,107,0.3);
+  background: var(--tint-08);
+  border: 1.5px solid var(--tint-30);
   border-radius: var(--radius);
 }
 .searchbox-list button {
@@ -405,17 +388,17 @@ input:focus, select:focus, button:focus-visible {
   padding: 12px 14px;
   background: transparent;
   border: none;
-  color: var(--paper);
-  border-bottom: 1px solid rgba(232,179,107,0.1);
+  color: var(--white);
+  border-bottom: 1px solid var(--tint-16);
   font-size: 14.5px;
 }
 .searchbox-list button:last-child { border-bottom: none; }
-.searchbox-list button:active { background: rgba(201,123,46,0.18); }
+.searchbox-list button:active { background: var(--tint-30); }
 
 .spinner {
   width: 20px; height: 20px;
-  border: 3px solid rgba(244,238,225,0.25);
-  border-top-color: var(--paper);
+  border: 3px solid var(--tint-30);
+  border-top-color: var(--white);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   display: inline-block;
