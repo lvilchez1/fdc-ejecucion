@@ -107,7 +107,11 @@
     resumenMonth: currentMonthStr(),
     resumenData: null,
     resumenLoading: false,
-    resumenError: ""
+    resumenError: "",
+
+    // --- mapa ---
+    mapaUserPos: null,
+    mapaError: ""
   };
 
   // ---------------------------------------------------------------
@@ -151,7 +155,7 @@
       if (!raw) return;
       const saved = JSON.parse(raw);
       Object.keys(saved).forEach(function (k) {
-        if (["stepIndex", "submitting", "submitError", "_gpsRequested", "view", "resumenData", "resumenLoading", "resumenError"].indexOf(k) !== -1) return;
+        if (["stepIndex", "submitting", "submitError", "_gpsRequested", "view", "resumenData", "resumenLoading", "resumenError", "mapaUserPos", "mapaError"].indexOf(k) !== -1) return;
         state[k] = saved[k];
       });
     } catch (e) {}
@@ -538,8 +542,20 @@
     const nodes = [
       el("h2", { class: "step-title" }, ["Datos de la visita"]),
       el("p", { class: "step-hint" }, ["Completa esto de pie, dentro del punto de venta."]),
-      el("button", { class: "camera-btn", type: "button", style: "margin-bottom:20px; background:transparent; color:var(--white); border:1.5px solid var(--tint-30)", onclick: function () { state.view = "resumen"; if (!state.resumenData) fetchResumen(); else render(); } }, ["📊 Ver resumen"])
+      el("div", { style: "display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap" }, [
+        el("button", { class: "camera-btn", type: "button", style: "background:transparent; color:var(--white); border:1.5px solid var(--tint-30)", onclick: function () { state.view = "resumen"; if (!state.resumenData) fetchResumen(); else render(); } }, ["📊 Ver resumen"]),
+        el("button", {
+          class: "camera-btn", type: "button",
+          style: "background:transparent; color:var(--white); border:1.5px solid var(--tint-30)" + (state.ejecutivo ? "" : "; opacity:0.5"),
+          disabled: state.ejecutivo ? null : "true",
+          onclick: function () { state.view = "mapa"; render(); }
+        }, ["🗺️ Ver mapa"])
+      ])
     ];
+
+    if (!state.ejecutivo) {
+      nodes.push(el("p", { class: "step-hint", style: "margin-top:-14px" }, ["Elige tu nombre para poder ver el mapa de tus clientes."]));
+    }
 
     nodes.push(fieldWrap("Ejecutivo", true,
       state.ejecutivos.length
@@ -966,6 +982,124 @@
     });
   }
 
+  // ---------------------------------------------------------------
+  // Mapa de clientes — Leaflet + OpenStreetMap (gratis, sin API key)
+  // ---------------------------------------------------------------
+  let mapInstance = null;
+  let leafletLoadPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletLoadPromise) return leafletLoadPromise;
+    leafletLoadPromise = new Promise(function (resolve, reject) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css";
+      document.head.appendChild(link);
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js";
+      script.onload = function () { resolve(); };
+      script.onerror = function () { leafletLoadPromise = null; reject(new Error("No se pudo cargar el mapa (revisa tu conexión).")); };
+      document.head.appendChild(script);
+    });
+    return leafletLoadPromise;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function clientesDelEjecutivo() {
+    return state.clientes.filter(function (c) { return c.ejecutivo === state.ejecutivo && c.lat != null && c.lng != null; });
+  }
+
+  function initMap(container, clientes, userPos) {
+    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+    const map = window.L.map(container);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap"
+    }).addTo(map);
+
+    const bounds = [];
+    clientes.forEach(function (c) {
+      bounds.push([c.lat, c.lng]);
+      const dirUrl = "https://www.google.com/maps/dir/?api=1&destination=" + c.lat + "," + c.lng;
+      const popupHtml = "<strong>" + escapeHtml(c.nombre) + "</strong>" +
+        (c.direccion ? "<br>" + escapeHtml(c.direccion) : "") +
+        (c.localidad ? "<br>" + escapeHtml(c.localidad) : "") +
+        (c.vendedor ? "<br>Vendedor: " + escapeHtml(c.vendedor) : "") +
+        (c.volumenPromedio ? "<br>Volumen prom.: " + escapeHtml(c.volumenPromedio) : "") +
+        '<br><a href="' + dirUrl + '" target="_blank" rel="noopener">Cómo llegar →</a>';
+      window.L.marker([c.lat, c.lng]).addTo(map).bindPopup(popupHtml);
+    });
+
+    if (userPos) {
+      bounds.push([userPos.lat, userPos.lng]);
+      window.L.circleMarker([userPos.lat, userPos.lng], { radius: 9, color: "#FFFFFF", weight: 2, fillColor: "#2a78d6", fillOpacity: 1 })
+        .addTo(map).bindPopup("Tú estás aquí");
+    }
+
+    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
+    else map.setView([-9.19, -75.0152], 5); // centro de Perú, respaldo si no hay ningún punto
+
+    setTimeout(function () { map.invalidateSize(); }, 100);
+    return map;
+  }
+
+  function renderMapa() {
+    root.innerHTML = "";
+    const header = el("div", { class: "app-header" }, [
+      el("div", { class: "brand" }, [el("img", { src: "assets/logo-white.png", alt: "Flor de Caña", class: "brand-logo" }), el("span", { class: "brand-sub" }, ["Mapa de clientes"])])
+    ]);
+    const body = el("div", { class: "app-body", style: "padding-left:0; padding-right:0" }, []);
+
+    const clientes = clientesDelEjecutivo();
+    const sinCoords = state.clientes.filter(function (c) { return c.ejecutivo === state.ejecutivo && (c.lat == null || c.lng == null); }).length;
+
+    const toolbar = el("div", { style: "padding:0 20px 12px" }, [
+      el("button", { class: "camera-btn", type: "button", onclick: function () { refreshMapaUbicacion(); } }, ["📍 Actualizar mi ubicación"])
+    ]);
+    body.appendChild(toolbar);
+
+    if (state.mapaError) body.appendChild(el("div", { class: "error-banner", style: "margin:0 20px 12px" }, [state.mapaError]));
+    if (clientes.length === 0) {
+      body.appendChild(el("p", { class: "step-hint", style: "margin:0 20px" }, ["Aún no hay clientes con coordenadas cargadas para este ejecutivo."]));
+    }
+    if (sinCoords > 0) {
+      body.appendChild(el("p", { class: "step-hint", style: "margin:0 20px 12px" }, [sinCoords + " cliente(s) tuyo(s) sin coordenadas cargadas — no aparecen en el mapa."]));
+    }
+
+    const mapDiv = el("div", { style: "height:60vh; width:100%" }, []);
+    body.appendChild(mapDiv);
+
+    const footer = el("div", { class: "app-footer" }, [
+      el("button", { class: "btn btn-primary", type: "button", onclick: function () { state.view = "form"; render(); } }, ["Volver al cuestionario"])
+    ]);
+
+    root.appendChild(header);
+    root.appendChild(body);
+    root.appendChild(footer);
+
+    loadLeaflet().then(function () {
+      mapInstance = initMap(mapDiv, clientes, state.mapaUserPos);
+    }).catch(function (err) {
+      state.mapaError = err.message;
+      render();
+    });
+  }
+
+  function refreshMapaUbicacion() {
+    getPosition(10000).then(function (pos) {
+      state.mapaUserPos = pos;
+      render();
+    }).catch(function () {
+      state.mapaError = "No se pudo obtener tu ubicación. Revisa el permiso de GPS.";
+      render();
+    });
+  }
+
   function renderResumen() {
     root.innerHTML = "";
     const header = el("div", { class: "app-header" }, [
@@ -1018,6 +1152,7 @@
   // ---------------------------------------------------------------
   function render() {
     if (state.view === "resumen") { renderResumen(); return; }
+    if (state.view === "mapa") { renderMapa(); return; }
 
     const steps = buildSteps();
     if (state.stepIndex >= steps.length) state.stepIndex = steps.length - 1;

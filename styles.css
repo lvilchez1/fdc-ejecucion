@@ -411,6 +411,11 @@ input:focus, select:focus, button:focus-visible {
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
 }
 
+/* ---------- Mapa de clientes (Leaflet) ---------- */
+.leaflet-container { font-family: inherit; }
+.leaflet-popup-content { font-size: 13.5px; line-height: 1.4; }
+.leaflet-popup-content a { color: var(--dark); font-weight: 700; }
+
 /* ---------- Resumen ---------- */
 .resumen-table {
   width: 100%;
