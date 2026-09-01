@@ -328,16 +328,16 @@
         if (!state.rutina) errs.push("Selecciona qué tipo de rutina vas a registrar.");
         else if (state.rutina === "cartera") {
           if (!state.canal) errs.push("Selecciona el canal (On / Off).");
-          if (!state.cliente) errs.push("Selecciona la razón social del cliente.");
+          if (!state.cliente) errs.push("Selecciona la razón comercial del cliente.");
         } else if (state.rutina === "activacion") {
-          if (!state.cliente) errs.push("Selecciona la razón social del cliente.");
+          if (!state.cliente) errs.push("Selecciona la razón comercial del cliente.");
         } else if (state.rutina === "matinal") {
           if (!state.matinalRegion) errs.push("Selecciona la región.");
           if (!state.matinalCodistribuidor) errs.push("Selecciona el codistribuidor.");
           if (!state.matinalLocalidad) errs.push("Selecciona la localidad.");
         } else if (state.rutina === "prospeccion") {
           if (!state.esClienteNuevo && !state.prospeccionCodigo) errs.push("Ingresa el código de cliente, o marca 'Es cliente nuevo'.");
-          if (!state.prospeccionRazonSocial) errs.push("Ingresa la razón social.");
+          if (!state.prospeccionRazonSocial) errs.push("Ingresa la razón comercial.");
           if (!state.canal) errs.push("Selecciona el canal (On / Off).");
         }
         break;
@@ -566,17 +566,17 @@
       nodes.push(fieldWrap("Canal", true, segControl(["On", "Off"], state.canal, function (v) { if (v !== state.canal) state.cliente = ""; state.canal = v; })));
       if (state.canal) {
         const names = clientesForCanal(state.canal).map(function (c) { return c.nombre; });
-        nodes.push(fieldWrap("Razón social", true,
+        nodes.push(fieldWrap("Razón comercial", true,
           names.length ? searchableSelect(names, state.cliente, "Buscar cliente…", function (name) { state.cliente = name; })
-            : el("input", { type: "text", placeholder: "Escribe la razón social", value: state.cliente, oninput: function (e) { state.cliente = e.target.value; } }),
+            : el("input", { type: "text", placeholder: "Escribe la razón comercial", value: state.cliente, oninput: function (e) { state.cliente = e.target.value; } }),
           !names.length ? "No hay clientes cargados para este canal todavía; escribe el nombre manualmente." : null
         ));
       }
     } else if (state.rutina === "activacion") {
       const names = clientesForCanal("On").map(function (c) { return c.nombre; });
-      nodes.push(fieldWrap("Razón social (canal On)", true,
+      nodes.push(fieldWrap("Razón comercial (canal On)", true,
         names.length ? searchableSelect(names, state.cliente, "Buscar cliente…", function (name) { state.cliente = name; })
-          : el("input", { type: "text", placeholder: "Escribe la razón social", value: state.cliente, oninput: function (e) { state.cliente = e.target.value; } })
+          : el("input", { type: "text", placeholder: "Escribe la razón comercial", value: state.cliente, oninput: function (e) { state.cliente = e.target.value; } })
       ));
     } else if (state.rutina === "matinal") {
       const regs = regiones();
@@ -615,7 +615,7 @@
       if (!state.esClienteNuevo) {
         nodes.push(fieldWrap("Código de cliente", true, el("input", { type: "text", placeholder: "Código", value: state.prospeccionCodigo, oninput: function (e) { state.prospeccionCodigo = e.target.value; } })));
       }
-      nodes.push(fieldWrap("Razón social", true, el("input", { type: "text", placeholder: "Razón social", value: state.prospeccionRazonSocial, oninput: function (e) { state.prospeccionRazonSocial = e.target.value; } })));
+      nodes.push(fieldWrap("Razón comercial", true, el("input", { type: "text", placeholder: "Razón comercial", value: state.prospeccionRazonSocial, oninput: function (e) { state.prospeccionRazonSocial = e.target.value; } })));
       nodes.push(fieldWrap("Canal", true, segControl(["On", "Off"], state.canal, function (v) { state.canal = v; })));
     }
     return nodes;
