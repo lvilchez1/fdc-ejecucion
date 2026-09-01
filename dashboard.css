@@ -47,8 +47,19 @@ html, body {
 .dash-subtitle { color: var(--tint-75); font-size: 13px; margin-top: 2px; }
 
 .dash-section { margin-bottom: 28px; }
-.dash-section-title { font-size: 14px; font-weight: 800; margin-bottom: 8px; display: flex; align-items: baseline; gap: 8px; }
+.dash-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.dash-section-title { font-size: 14px; font-weight: 800; display: flex; align-items: baseline; gap: 8px; }
+.dash-section-title-row .dash-section-title { margin-bottom: 0; }
+.dash-section > .dash-section-title { margin-bottom: 8px; }
 .dash-section-note { color: var(--tint-55); font-size: 11.5px; font-weight: 400; }
+.title-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
 
 .dash-error {
   background: rgba(227,73,72,0.14);
@@ -116,14 +127,24 @@ table.dash-table tbody tr:nth-child(even) { background: var(--tint-08); }
   background: var(--white);
   color: var(--dark);
   font-weight: 700;
-  font-size: 13px;
-  padding: 9px 16px;
+  font-size: 12.5px;
+  padding: 8px 14px;
   border: none;
   border-radius: 999px;
-  margin-top: 10px;
   cursor: pointer;
 }
 .btn-capture:disabled { opacity: 0.6; cursor: default; }
+.btn-secondary-sm {
+  background: transparent;
+  color: var(--white);
+  font-weight: 700;
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border: 1.5px solid var(--tint-30);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.btn-secondary-sm:disabled { opacity: 0.6; cursor: default; }
 .capture-status { color: var(--tint-75); font-size: 12px; margin-top: 8px; }
 
 .dash-empty { color: var(--tint-55); font-size: 12.5px; padding: 10px 0; }

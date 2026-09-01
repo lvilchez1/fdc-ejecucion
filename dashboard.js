@@ -20,6 +20,7 @@
     filtroCanal: "Todos",
     filtroLocalidad: "Todas",
     capturando: false,
+    exportando: false,
     captureStatus: ""
   };
 
@@ -221,14 +222,19 @@
         ])
       : el("div", { class: "dash-empty" }, ["No hay clientes pendientes con estos filtros — cobertura completa."]);
 
-    const captureBtn = el("button", { class: "btn-capture", type: "button", disabled: lista.length === 0 ? "true" : null }, [state.capturando ? "Generando…" : "📸 Tomar captura"]);
+    const captureBtn = el("button", { class: "btn-capture", type: "button", disabled: (lista.length === 0 || state.capturando || state.exportando) ? "true" : null }, [state.capturando ? "Generando…" : "📸 Tomar captura"]);
     captureBtn.addEventListener("click", function () { tomarCaptura(tableId, lista.length); });
 
+    const exportBtn = el("button", { class: "btn-secondary-sm", type: "button", disabled: (lista.length === 0 || state.capturando || state.exportando) ? "true" : null }, [state.exportando ? "Generando…" : "📊 Exportar Excel"]);
+    exportBtn.addEventListener("click", function () { exportarExcel(lista); });
+
     return el("div", { class: "dash-section" }, [
-      el("div", { class: "dash-section-title" }, ["Clientes sin visitar este mes (Cartera)"]),
+      el("div", { class: "dash-section-title-row" }, [
+        el("div", { class: "dash-section-title" }, ["Clientes sin visitar este mes (Cartera)"]),
+        el("div", { class: "title-actions" }, [captureBtn, exportBtn])
+      ]),
       el("div", { class: "filters-row" }, [selEjecutivo, selCanal, selLocalidad]),
       table,
-      captureBtn,
       state.captureStatus ? el("div", { class: "capture-status" }, [state.captureStatus]) : null
     ]);
   }
@@ -251,9 +257,9 @@
     return html2canvasPromise;
   }
 
-  function nombreArchivo(sufijo) {
+  function nombreArchivo(sufijo, ext) {
     const ejec = state.filtroEjecutivo === "Todos" ? "Todos" : state.filtroEjecutivo.replace(/[^a-zA-Z0-9_-]/g, "_");
-    return ejec + "_" + state.fecha + (sufijo ? "_" + sufijo : "") + ".png";
+    return ejec + "_" + state.fecha + (sufijo ? "_" + sufijo : "") + "." + (ext || "png");
   }
 
   function descargarBlob(blob, filename) {
@@ -316,6 +322,43 @@
       state.captureStatus = "No se pudo generar la captura (" + e.message + ").";
     }
     state.capturando = false;
+    render();
+  }
+
+  // ---------------------------------------------------------------
+  // Exportar a Excel (SheetJS) — misma lista filtrada que se ve en pantalla
+  // ---------------------------------------------------------------
+  let xlsxPromise = null;
+  function loadXLSX() {
+    if (window.XLSX) return Promise.resolve();
+    if (xlsxPromise) return xlsxPromise;
+    xlsxPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      script.onload = function () { resolve(); };
+      script.onerror = function () { xlsxPromise = null; reject(new Error("No se pudo cargar la librería de Excel.")); };
+      document.head.appendChild(script);
+    });
+    return xlsxPromise;
+  }
+
+  async function exportarExcel(lista) {
+    state.exportando = true; state.captureStatus = ""; render();
+    try {
+      await loadXLSX();
+      const datos = lista.map(function (c) {
+        return { "Razón comercial": c.nombre, "Localidad": c.localidad || "", "Dirección": c.direccion || "" };
+      });
+      const ws = window.XLSX.utils.json_to_sheet(datos);
+      ws["!cols"] = [{ wch: 32 }, { wch: 18 }, { wch: 32 }];
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, "Sin visitar");
+      window.XLSX.writeFile(wb, nombreArchivo("", "xlsx"));
+      state.captureStatus = "Excel descargado (" + lista.length + " clientes).";
+    } catch (e) {
+      state.captureStatus = "No se pudo exportar el Excel (" + e.message + ").";
+    }
+    state.exportando = false;
     render();
   }
 
