@@ -719,16 +719,14 @@
   }
   function priceField(f) {
     const p = state.precios[f.key];
-    const input = el("input", { type: "number", min: "0", step: "0.01", inputmode: "decimal", placeholder: "0.00", value: p.value, disabled: p.na ? "true" : null, oninput: function (e) { p.value = e.target.value; } });
-    const naCb = el("input", { type: "checkbox" });
-    naCb.checked = p.na;
-    naCb.addEventListener("change", function () { p.na = naCb.checked; if (p.na) p.value = ""; render(); });
-    const naLabel = el("label", { style: "display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13.5px; color:var(--tint-75)" }, [naCb, "No aplica en este punto de venta"]);
-    return el("div", { class: "field" }, [el("label", { class: "field-label field-required" }, [f.label]), input, naLabel]);
+    const input = el("input", { type: "number", min: "0", step: "0.01", inputmode: "decimal", placeholder: "0.00", class: "price-row-input", value: p.value, disabled: p.na ? "true" : null, oninput: function (e) { p.value = e.target.value; } });
+    const naBtn = el("button", { type: "button", class: "price-row-na" + (p.na ? " active" : "") }, ["No aplica"]);
+    naBtn.addEventListener("click", function () { p.na = !p.na; if (p.na) p.value = ""; render(); });
+    return el("div", { class: "price-row" }, [el("span", { class: "price-row-label" + (p.na ? " dim" : "") }, [f.label]), input, naBtn]);
   }
   function viewPrecios() {
     const applicable = PRICE_FIELDS.filter(function (f) { return f.channels.indexOf(state.canal) !== -1; });
-    return [el("h2", { class: "step-title" }, ["Precio"]), el("p", { class: "step-hint" }, ["Ingresa el PVP vigente, o marca 'No aplica' si ese producto no se vende en este punto de venta."])].concat(applicable.map(priceField));
+    return [el("h2", { class: "step-title" }, ["Precio"]), el("p", { class: "step-hint" }, ["Ingresa el PVP vigente, o marca 'No aplica' si ese producto no se vende en este punto de venta."]), el("div", { class: "price-list" }, applicable.map(priceField))];
   }
   function materialField(key, label) { return fieldWrap(label, true, segControl(["Si", "No", "No aplica"], state.materiales[key], function (v) { state.materiales[key] = v; })); }
   function viewMateriales() {
