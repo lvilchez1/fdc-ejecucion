@@ -39,7 +39,7 @@
     return o;
   }
   function freshMateriales() {
-    return { vasos_pavonados: "", hieleras: "", vasos_vidrio: "", barmats: "", luminoso: "", banner_promos: "" };
+    return { vasos_pavonados: "", hieleras: "", vasos_vidrio: "", barmats: "", banner_promos: "" };
   }
   function normalizeSkus(list) {
     return (list || []).map(function (s) { return typeof s === "string" ? { sku: s, starOn: false, starOff: false } : s; });
@@ -78,6 +78,8 @@
     portafolio: [],
     visibilidad: [],
     fotoVisibilidad: null,
+    luminosoFDC: "", fotoLuminoso: null,
+    implementacionFDC: "", fotoImplementacion: null,
     cartaCocteles: "", cartaCantidadCocteles: "",
     cartaBotellasSiNo: "", cartaListaBotellas: [],
     cartaActivacionMenu: "", cartaCombosOff: "",
@@ -89,6 +91,7 @@
 
     fotosRitual: [],
     fotosConsumo: [],
+    fotosSetupActivos: [],
 
     matinalRegion: "", matinalCodistribuidor: "", matinalLocalidad: "",
     fotoMatinal: null,
@@ -300,10 +303,19 @@
   function buildSteps() {
     const steps = ["identificacion"];
     if (state.rutina === "cartera") {
-      steps.push("portafolio", "visibilidad", "foto_visibilidad", "carta", "foto_carta", "precios", "materiales", "foto_materiales");
+      steps.push("portafolio", "visibilidad", "foto_visibilidad");
+      if (state.canal === "On") {
+        steps.push("luminoso_fdc");
+        if (state.luminosoFDC === "Si") steps.push("foto_luminoso");
+      }
+      steps.push("implementacion_fdc");
+      if (state.implementacionFDC === "Si") steps.push("foto_implementacion");
+      steps.push("carta", "foto_carta", "precios", "materiales");
+      const onNecesitaFotoMateriales = ["vasos_pavonados", "hieleras", "vasos_vidrio", "barmats"].some(function (k) { return state.materiales[k] === "Si"; });
+      if ((state.canal === "On" && onNecesitaFotoMateriales) || (state.canal === "Off" && state.materiales.banner_promos === "Si")) steps.push("foto_materiales");
       if (state.canal === "On") steps.push("capacitacion");
     } else if (state.rutina === "activacion") {
-      steps.push("foto_ritual", "foto_consumo");
+      steps.push("foto_ritual", "foto_consumo", "foto_setup_activos");
     } else if (state.rutina === "matinal") {
       steps.push("foto_matinal");
     } else if (state.rutina === "prospeccion") {
@@ -352,6 +364,18 @@
       case "foto_visibilidad":
         if (!state.fotoVisibilidad) errs.push("Toma la foto de contrabarra/góndola.");
         break;
+      case "luminoso_fdc":
+        if (!state.luminosoFDC) errs.push("Indica si tiene luminoso FDC (Sí/No).");
+        break;
+      case "foto_luminoso":
+        if (!state.fotoLuminoso) errs.push("Toma la foto del luminoso FDC.");
+        break;
+      case "implementacion_fdc":
+        if (!state.implementacionFDC) errs.push("Indica si tiene implementación FDC (Sí/No).");
+        break;
+      case "foto_implementacion":
+        if (!state.fotoImplementacion) errs.push("Toma la foto de la implementación FDC.");
+        break;
       case "carta":
         if (state.canal === "On") {
           if (!state.cartaCocteles) errs.push("Indica si hay cócteles FDC (Sí/No).");
@@ -375,7 +399,7 @@
         break;
       case "materiales":
         if (state.canal === "On") {
-          ["vasos_pavonados", "hieleras", "vasos_vidrio", "barmats", "luminoso"].forEach(function (k) {
+          ["vasos_pavonados", "hieleras", "vasos_vidrio", "barmats"].forEach(function (k) {
             if (!state.materiales[k]) errs.push("Responde la pregunta de materiales pendiente.");
           });
         } else if (state.canal === "Off") {
@@ -388,12 +412,9 @@
       case "capacitacion":
         if (state.canal === "On" && !state.capacitacion) errs.push("Indica si el barstaff necesita capacitación.");
         break;
-      case "foto_ritual":
-        if (state.fotosRitual.length < 1) errs.push("Toma al menos 1 foto del ritual servido 12+.");
-        break;
-      case "foto_consumo":
-        if (state.fotosConsumo.length < 1) errs.push("Toma al menos 1 foto de consumo.");
-        break;
+      case "foto_ritual": break; // opcional, mínimo 0
+      case "foto_consumo": break; // opcional, mínimo 0
+      case "foto_setup_activos": break; // opcional, mínimo 0
       case "foto_matinal":
         if (!state.fotoMatinal) errs.push("Toma la foto (cámara frontal) de la Matinal/Vespertina.");
         break;
@@ -508,9 +529,11 @@
         ]));
       });
       wrap.appendChild(grid);
-      wrap.appendChild(el("p", { class: "step-hint", style: "margin-top:12px" }, [photos.length + " foto(s) · mínimo " + minCount + "."]));
-    } else {
+      wrap.appendChild(el("p", { class: "step-hint", style: "margin-top:12px" }, [photos.length + " foto(s)" + (minCount > 0 ? " · mínimo " + minCount + "." : ".")]));
+    } else if (minCount > 0) {
       wrap.appendChild(el("p", { class: "step-hint", style: "margin-top:0" }, ["Se abrirá la cámara en vivo. Mínimo " + minCount + " foto(s), sin máximo."]));
+    } else {
+      wrap.appendChild(el("p", { class: "step-hint", style: "margin-top:0" }, ["Opcional — puedes tocar «Siguiente» sin tomar ninguna foto, o agregar las que necesites."]));
     }
     wrap.appendChild(el("button", { class: "camera-btn", type: "button", style: "margin-top:10px", onclick: function () { openCamera(label, facing).then(function (photo) { onAdd(photo); render(); }).catch(function () {}); } }, [photos.length ? "📷 Agregar otra foto" : "📷 Abrir cámara"]));
     return wrap;
@@ -661,6 +684,18 @@
   function viewFotoVisibilidad() {
     return [el("h2", { class: "step-title" }, ["Foto de contrabarra/góndola"]), photoSlot(state.fotoVisibilidad, "Visibilidad", "environment", function (p) { state.fotoVisibilidad = p; })];
   }
+  function viewLuminosoFdc() {
+    return [el("h2", { class: "step-title" }, ["Luminoso FDC"]), fieldWrap("¿Tiene luminoso FDC?", true, segControl(["Si", "No"], state.luminosoFDC, function (v) { state.luminosoFDC = v; }))];
+  }
+  function viewFotoLuminoso() {
+    return [el("h2", { class: "step-title" }, ["Foto de luminoso FDC"]), photoSlot(state.fotoLuminoso, "Luminoso FDC", "environment", function (p) { state.fotoLuminoso = p; })];
+  }
+  function viewImplementacionFdc() {
+    return [el("h2", { class: "step-title" }, ["Implementación FDC"]), fieldWrap("¿Tiene implementación FDC?", true, segControl(["Si", "No"], state.implementacionFDC, function (v) { state.implementacionFDC = v; }))];
+  }
+  function viewFotoImplementacion() {
+    return [el("h2", { class: "step-title" }, ["Foto de implementación FDC"]), photoSlot(state.fotoImplementacion, "Implementación FDC", "environment", function (p) { state.fotoImplementacion = p; })];
+  }
   function viewCarta() {
     const nodes = [el("h2", { class: "step-title" }, ["Carta"])];
     if (state.canal === "On") {
@@ -703,7 +738,6 @@
       nodes.push(materialField("hieleras", "¿Tiene hieleras?"));
       nodes.push(materialField("vasos_vidrio", "¿Tiene vasos vidrio?"));
       nodes.push(materialField("barmats", "¿Tiene barmats?"));
-      nodes.push(materialField("luminoso", "¿Tiene Luminoso FDC?"));
     } else if (state.canal === "Off") {
       nodes.push(materialField("banner_promos", "¿Tiene banner/pizarra de promos?"));
     }
@@ -718,13 +752,20 @@
   function viewFotoRitual() {
     return [
       el("h2", { class: "step-title" }, ["Foto ritual servido 12+"]),
-      photoMultiSlot(state.fotosRitual, "Ritual servido 12+", "environment", 1, function (p) { state.fotosRitual.push(p); }, function (i) { state.fotosRitual.splice(i, 1); })
+      photoMultiSlot(state.fotosRitual, "Ritual servido 12+", "environment", 0, function (p) { state.fotosRitual.push(p); }, function (i) { state.fotosRitual.splice(i, 1); })
     ];
   }
   function viewFotoConsumo() {
     return [
       el("h2", { class: "step-title" }, ["Foto de consumo"]),
-      photoMultiSlot(state.fotosConsumo, "Consumo", "environment", 1, function (p) { state.fotosConsumo.push(p); }, function (i) { state.fotosConsumo.splice(i, 1); })
+      photoMultiSlot(state.fotosConsumo, "Consumo", "environment", 0, function (p) { state.fotosConsumo.push(p); }, function (i) { state.fotosConsumo.splice(i, 1); })
+    ];
+  }
+  function viewFotoSetupActivos() {
+    return [
+      el("h2", { class: "step-title" }, ["Set up activos FDC"]),
+      el("p", { class: "step-hint" }, ["Activos/Anfi posicionados para la activación."]),
+      photoMultiSlot(state.fotosSetupActivos, "Set up activos FDC", "environment", 0, function (p) { state.fotosSetupActivos.push(p); }, function (i) { state.fotosSetupActivos.splice(i, 1); })
     ];
   }
   function viewFotoMatinal() {
@@ -775,18 +816,23 @@
   const VIEW_BY_STEP = {
     identificacion: viewIdentificacion,
     portafolio: viewPortafolio, visibilidad: viewVisibilidad, foto_visibilidad: viewFotoVisibilidad,
+    luminoso_fdc: viewLuminosoFdc, foto_luminoso: viewFotoLuminoso,
+    implementacion_fdc: viewImplementacionFdc, foto_implementacion: viewFotoImplementacion,
     carta: viewCarta, foto_carta: viewFotoCarta, precios: viewPrecios,
     materiales: viewMateriales, foto_materiales: viewFotoMateriales, capacitacion: viewCapacitacion,
-    foto_ritual: viewFotoRitual, foto_consumo: viewFotoConsumo,
+    foto_ritual: viewFotoRitual, foto_consumo: viewFotoConsumo, foto_setup_activos: viewFotoSetupActivos,
     foto_matinal: viewFotoMatinal,
     resultado_prospeccion: viewResultadoProspeccion, foto_checkout: viewFotoCheckout,
     revision: viewRevision
   };
   const STEP_LABELS = {
     identificacion: "Identificación", portafolio: "Portafolio", visibilidad: "Visibilidad",
-    foto_visibilidad: "Foto visibilidad", carta: "Carta", foto_carta: "Foto carta",
+    foto_visibilidad: "Foto visibilidad",
+    luminoso_fdc: "Luminoso FDC", foto_luminoso: "Foto luminoso",
+    implementacion_fdc: "Implementación FDC", foto_implementacion: "Foto implementación",
+    carta: "Carta", foto_carta: "Foto carta",
     precios: "Precios", materiales: "Materiales", foto_materiales: "Foto materiales", capacitacion: "Capacitación",
-    foto_ritual: "Foto ritual", foto_consumo: "Foto consumo",
+    foto_ritual: "Foto ritual", foto_consumo: "Foto consumo", foto_setup_activos: "Set up activos",
     foto_matinal: "Foto matinal", resultado_prospeccion: "Resultado", foto_checkout: "Foto check out",
     revision: "Revisión"
   };
@@ -801,6 +847,10 @@
         canal: state.canal, cliente: state.cliente,
         portafolio: state.portafolio, visibilidad: state.visibilidad,
         foto_visibilidad: state.fotoVisibilidad,
+        luminoso_si_no: state.canal === "On" ? state.luminosoFDC : "No aplica",
+        foto_luminoso: state.canal === "On" && state.luminosoFDC === "Si" ? state.fotoLuminoso : null,
+        implementacion_si_no: state.implementacionFDC,
+        foto_implementacion: state.implementacionFDC === "Si" ? state.fotoImplementacion : null,
         carta: {
           cocteles_si_no: state.canal === "On" ? state.cartaCocteles : "No aplica",
           cantidad_cocteles: state.canal === "On" && state.cartaCocteles === "Si" ? state.cartaCantidadCocteles : "",
@@ -816,7 +866,6 @@
           hieleras: state.canal === "On" ? state.materiales.hieleras : "No aplica",
           vasos_vidrio: state.canal === "On" ? state.materiales.vasos_vidrio : "No aplica",
           barmats: state.canal === "On" ? state.materiales.barmats : "No aplica",
-          luminoso: state.canal === "On" ? state.materiales.luminoso : "No aplica",
           banner_promos: state.canal === "Off" ? state.materiales.banner_promos : "No aplica"
         },
         foto_materiales: state.fotoMateriales,
@@ -824,7 +873,7 @@
       });
     }
     if (state.rutina === "activacion") {
-      return Object.assign(base, { cliente: state.cliente, fotos_ritual: state.fotosRitual, fotos_consumo: state.fotosConsumo });
+      return Object.assign(base, { cliente: state.cliente, fotos_ritual: state.fotosRitual, fotos_consumo: state.fotosConsumo, fotos_setup_activos: state.fotosSetupActivos });
     }
     if (state.rutina === "matinal") {
       return Object.assign(base, { region: state.matinalRegion, codistribuidor: state.matinalCodistribuidor, localidad: state.matinalLocalidad, foto_matinal: state.fotoMatinal });
@@ -889,10 +938,11 @@
       stepIndex: 0, submitting: false, submitError: "", _gpsRequested: false,
       ejecutivo: keepEjecutivo, rutina: "", canal: "", cliente: "",
       portafolio: [], visibilidad: [], fotoVisibilidad: null,
+      luminosoFDC: "", fotoLuminoso: null, implementacionFDC: "", fotoImplementacion: null,
       cartaCocteles: "", cartaCantidadCocteles: "", cartaBotellasSiNo: "",
       cartaListaBotellas: [], cartaActivacionMenu: "", cartaCombosOff: "", fotoCarta: null,
       precios: freshPrecios(), materiales: freshMateriales(), fotoMateriales: null, capacitacion: "",
-      fotosRitual: [], fotosConsumo: [],
+      fotosRitual: [], fotosConsumo: [], fotosSetupActivos: [],
       matinalRegion: "", matinalCodistribuidor: "", matinalLocalidad: "", fotoMatinal: null,
       esClienteNuevo: false, prospeccionCodigo: "", prospeccionRazonSocial: "", resultado: "",
       compraSkus: [], compraCajas: {}, seguimientoCajas: "", seguimientoMarca: "", fotoCheckout: null,
