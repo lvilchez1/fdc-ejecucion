@@ -1,21 +1,14 @@
 /* =====================================================================
    FDC — Checklist de ejecución en punto de venta
    Lógica de la app. Sin dependencias externas (debe cargar sin señal).
-
-   Modelo: primero se elige una RUTINA (tipo de visita). Cada rutina
-   tiene su propio flujo de pasos:
-     - cartera      → Visita cliente cartera (canal On u Off)
-     - activacion   → Activación On Trade
-     - matinal      → Matinal / Vespertina (a codistribuidores)
-     - prospeccion  → Prospección de clientes nuevos
    ===================================================================== */
 
 (function () {
   "use strict";
 
   const CFG = window.APP_CONFIG || {};
-  const PENDING_KEY = "fdc_pending_submit_v2";
-  const DRAFT_KEY = "fdc_draft_v2";
+  const PENDING_KEY = "fdc_pending_submit_v4";
+  const DRAFT_KEY = "fdc_draft_v4";
 
   const RUTINA_LABELS = {
     cartera: "Visita cliente cartera",
@@ -25,14 +18,19 @@
   };
 
   const PRICE_FIELDS = [
-    { key: "fdc_4_750", label: "PVP FDC 4 750" },
-    { key: "fdc_es_4_750", label: "PVP FDC ES 4 750" },
-    { key: "fdc_12_750", label: "PVP FDC 12 750" },
-    { key: "fdc_18_750", label: "PVP FDC 18 750" },
-    { key: "jack_daniels", label: "PVP Jack Daniels/Sabores" },
-    { key: "jw_red", label: "PVP JW Red" },
-    { key: "jw_black", label: "PVP JW Black" },
-    { key: "jw_gold", label: "PVP JW Gold" }
+    { key: "fdc_4_750", label: "PVP FDC 4 750", channels: ["On", "Off"] },
+    { key: "fdc_es_4_750", label: "PVP FDC ES 4 750", channels: ["On", "Off"] },
+    { key: "fdc_5_750", label: "PVP FDC 5 750", channels: ["Off"] },
+    { key: "fdc_7_750", label: "PVP FDC 7 750", channels: ["On", "Off"] },
+    { key: "fdc_12_750", label: "PVP FDC 12 750", channels: ["On", "Off"] },
+    { key: "fdc_18_750", label: "PVP FDC 18 750", channels: ["On"] },
+    { key: "jack_daniels", label: "PVP Jack Daniels/Sabores", channels: ["On", "Off"] },
+    { key: "bacardi_oro", label: "PVP Bacardi Oro", channels: ["On", "Off"] },
+    { key: "diplomatico_mantuano", label: "PVP Diplomático Mantuano", channels: ["On", "Off"] },
+    { key: "garrafa_blanco_bacardi", label: "PVP Garrafa Blanco Bacardi", channels: ["On", "Off"] },
+    { key: "jw_red", label: "PVP JW Red", channels: ["On", "Off"] },
+    { key: "jw_black", label: "PVP JW Black", channels: ["On", "Off"] },
+    { key: "jw_gold", label: "PVP JW Gold", channels: ["On", "Off"] }
   ];
 
   function freshPrecios() {
@@ -40,19 +38,32 @@
     PRICE_FIELDS.forEach(function (f) { o[f.key] = { value: "", na: false }; });
     return o;
   }
-
   function freshMateriales() {
     return { vasos_pavonados: "", hieleras: "", vasos_vidrio: "", barmats: "", luminoso: "", banner_promos: "" };
+  }
+  function normalizeSkus(list) {
+    return (list || []).map(function (s) { return typeof s === "string" ? { sku: s, starOn: false, starOff: false } : s; });
+  }
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function todayDateStr() {
+    const d = new Date();
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function currentMonthStr() {
+    const d = new Date();
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1);
   }
 
   // ---------------------------------------------------------------
   // Estado
   // ---------------------------------------------------------------
   const state = {
-    skus: (CFG.FALLBACK_SKUS || []).slice(),
+    skus: normalizeSkus(CFG.FALLBACK_SKUS),
     clientes: (CFG.FALLBACK_CLIENTES || []).slice(),
     ejecutivos: (CFG.FALLBACK_EJECUTIVOS || []).slice(),
     codistribuidores: (CFG.FALLBACK_CODISTRIBUIDORES || []).slice(),
+
+    view: "form", // "form" | "resumen"
 
     stepIndex: 0,
     submitting: false,
@@ -60,13 +71,10 @@
     _gpsRequested: false,
 
     ejecutivo: "",
-    rutina: "",   // "cartera" | "activacion" | "matinal" | "prospeccion"
-
-    // --- cartera / activación comparten el concepto de "cliente" ---
-    canal: "",    // "On" | "Off" — solo cartera y prospección lo piden explícitamente
+    rutina: "",
+    canal: "",
     cliente: "",
 
-    // --- cartera ---
     portafolio: [],
     visibilidad: [],
     fotoVisibilidad: null,
@@ -79,24 +87,27 @@
     fotoMateriales: null,
     capacitacion: "",
 
-    // --- activación on trade ---
-    fotoBengala: null,
-    fotoSembrado: null,
-    fotoConsumo: null,
+    fotosRitual: [],
+    fotosConsumo: [],
 
-    // --- matinal / vespertina ---
-    codistribuidor: "",
+    matinalRegion: "", matinalCodistribuidor: "", matinalLocalidad: "",
     fotoMatinal: null,
 
-    // --- prospección ---
-    prospeccionCodigo: "",
-    prospeccionRazonSocial: "",
-    resultado: "",              // "Compra" | "Seguimiento" | "Rechazado"
-    compraSkus: [],             // SKUs seleccionados en Compra
-    compraCajas: {},            // sku -> cantidad de cajas
+    esClienteNuevo: false,
+    prospeccionCodigo: "", prospeccionRazonSocial: "",
+    resultado: "", compraSkus: [], compraCajas: {},
+    seguimientoCajas: "", seguimientoMarca: "",
     fotoCheckout: null,
 
-    gpsEnvio: null
+    gpsEnvio: null,
+
+    // --- resumen ---
+    resumenTab: "dia", // "dia" | "mes"
+    resumenDay: todayDateStr(),
+    resumenMonth: currentMonthStr(),
+    resumenData: null,
+    resumenLoading: false,
+    resumenError: ""
   };
 
   // ---------------------------------------------------------------
@@ -108,11 +119,8 @@
     Object.keys(attrs).forEach(function (k) {
       if (k === "class") node.className = attrs[k];
       else if (k === "html") node.innerHTML = attrs[k];
-      else if (k.indexOf("on") === 0 && typeof attrs[k] === "function") {
-        node.addEventListener(k.slice(2), attrs[k]);
-      } else if (attrs[k] !== null && attrs[k] !== undefined) {
-        node.setAttribute(k, attrs[k]);
-      }
+      else if (k.indexOf("on") === 0 && typeof attrs[k] === "function") node.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] !== null && attrs[k] !== undefined) node.setAttribute(k, attrs[k]);
     });
     (children || []).forEach(function (c) {
       if (c === null || c === undefined) return;
@@ -120,48 +128,38 @@
     });
     return node;
   }
-
-  function pad(n) { return n < 10 ? "0" + n : "" + n; }
   function fmtTimestamp(d) {
-    return pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear() +
-      " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    return pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
   }
   function fmtCoord(n) { return typeof n === "number" ? n.toFixed(6) : "—"; }
 
   function getPosition(timeoutMs) {
     return new Promise(function (resolve, reject) {
-      if (!("geolocation" in navigator)) {
-        reject(new Error("Este navegador no soporta geolocalización."));
-        return;
-      }
+      if (!("geolocation" in navigator)) { reject(new Error("Este navegador no soporta geolocalización.")); return; }
       navigator.geolocation.getCurrentPosition(
-        function (pos) {
-          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, timestamp: new Date().toISOString() });
-        },
+        function (pos) { resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, timestamp: new Date().toISOString() }); },
         function (err) { reject(err); },
         { enableHighAccuracy: true, timeout: timeoutMs || 12000, maximumAge: 5000 }
       );
     });
   }
 
-  function saveDraft() {
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch (e) { /* sin almacenamiento: seguimos solo en memoria */ }
-  }
+  function saveDraft() { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch (e) {} }
   function loadDraft() {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw);
       Object.keys(saved).forEach(function (k) {
-        if (k === "stepIndex" || k === "submitting" || k === "submitError" || k === "_gpsRequested") return;
+        if (["stepIndex", "submitting", "submitError", "_gpsRequested", "view", "resumenData", "resumenLoading", "resumenError"].indexOf(k) !== -1) return;
         state[k] = saved[k];
       });
-    } catch (e) { /* borrador corrupto o inexistente: se ignora */ }
+    } catch (e) {}
   }
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
 
   // ---------------------------------------------------------------
-  // Configuración remota (Clientes / SKUs / Ejecutivos / Codistribuidores)
+  // Configuración remota
   // ---------------------------------------------------------------
   async function loadRemoteConfig() {
     if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.indexOf("PEGA_AQUI") === 0) return;
@@ -171,19 +169,58 @@
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       if (data && data.ok) {
-        if (Array.isArray(data.skus) && data.skus.length) state.skus = data.skus;
+        if (Array.isArray(data.skus) && data.skus.length) state.skus = normalizeSkus(data.skus);
         if (Array.isArray(data.clientes)) state.clientes = data.clientes;
         if (Array.isArray(data.ejecutivos)) state.ejecutivos = data.ejecutivos;
         if (Array.isArray(data.codistribuidores)) state.codistribuidores = data.codistribuidores;
       }
-    } catch (e) {
-      console.warn("No se pudo cargar la configuración remota:", e.message);
+    } catch (e) { console.warn("No se pudo cargar la configuración remota:", e.message); }
+  }
+
+  async function fetchResumen() {
+    if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.indexOf("PEGA_AQUI") === 0) {
+      state.resumenError = "El backend aún no está configurado (config.js).";
+      render();
+      return;
     }
+    state.resumenLoading = true; state.resumenError = ""; render();
+    try {
+      const url = CFG.APPS_SCRIPT_URL + "?token=" + encodeURIComponent(CFG.SHARED_TOKEN) +
+        "&action=resumen&day=" + encodeURIComponent(state.resumenDay) + "&month=" + encodeURIComponent(state.resumenMonth);
+      const res = await fetch(url, { method: "GET" });
+      const data = await res.json();
+      if (!data || !data.ok) throw new Error((data && data.error) || "Error desconocido");
+      state.resumenData = data;
+    } catch (e) {
+      state.resumenError = "No se pudo cargar el resumen (" + e.message + ").";
+    }
+    state.resumenLoading = false;
+    render();
+  }
+
+  function skuNames() { return state.skus.map(function (s) { return s.sku; }); }
+  function isStarred(sku, canal) {
+    const s = state.skus.find(function (x) { return x.sku === sku; });
+    if (!s) return false;
+    return canal === "Off" ? !!s.starOff : !!s.starOn;
+  }
+  function regiones() {
+    const seen = [];
+    state.codistribuidores.forEach(function (c) { if (seen.indexOf(c.region) === -1) seen.push(c.region); });
+    return seen;
+  }
+  function codistribuidoresEnRegion(region) {
+    const seen = [];
+    state.codistribuidores.forEach(function (c) { if (c.region === region && seen.indexOf(c.codistribuidor) === -1) seen.push(c.codistribuidor); });
+    return seen;
+  }
+  function localidadesDe(region, codistribuidor) {
+    const rec = state.codistribuidores.find(function (c) { return c.region === region && c.codistribuidor === codistribuidor; });
+    return rec ? rec.localidades : [];
   }
 
   // =================================================================
-  // CÁMARA — captura en vivo únicamente. "facing" puede ser "environment"
-  // (trasera, por defecto) o "user" (frontal/selfie, para Matinal/Vespertina).
+  // CÁMARA
   // =================================================================
   function openCamera(label, facing) {
     facing = facing || "environment";
@@ -194,50 +231,29 @@
       const hud = el("div", { class: "camera-hud" }, []);
       const shutterBtn = el("button", { class: "shutter", disabled: "true" }, ["Capturar"]);
       const cancelBtn = el("button", { class: "cam-cancel" }, ["Cancelar"]);
-      hud.appendChild(cancelBtn);
-      hud.appendChild(shutterBtn);
-      overlay.appendChild(video);
-      overlay.appendChild(badge);
-      overlay.appendChild(hud);
+      hud.appendChild(cancelBtn); hud.appendChild(shutterBtn);
+      overlay.appendChild(video); overlay.appendChild(badge); overlay.appendChild(hud);
       document.body.appendChild(overlay);
-      if (facing === "user") video.style.transform = "scaleX(-1)"; // efecto espejo, solo visual
+      if (facing === "user") video.style.transform = "scaleX(-1)";
 
-      let stream = null;
-      let livePos = null;
-      let cancelled = false;
-
+      let stream = null, livePos = null, cancelled = false;
       function cleanup() {
         if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
       }
-
       cancelBtn.addEventListener("click", function () { cancelled = true; cleanup(); reject(new Error("cancelled")); });
-
       getPosition(10000).then(function (pos) {
         livePos = pos;
         badge.textContent = "Ubicación lista · precisión ±" + Math.round(pos.acc) + " m";
-      }).catch(function () {
-        badge.textContent = "No se pudo obtener GPS. Revisa permisos de ubicación e inténtalo de nuevo.";
-      });
+      }).catch(function () { badge.textContent = "No se pudo obtener GPS. Revisa permisos de ubicación e inténtalo de nuevo."; });
 
-      navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facing } },
-        audio: false
-      }).then(function (s) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing } }, audio: false }).then(function (s) {
         if (cancelled) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
-        stream = s;
-        video.srcObject = s;
-        shutterBtn.disabled = false;
-      }).catch(function (err) {
-        cleanup();
-        reject(new Error("No se pudo abrir la cámara: " + err.message));
-      });
+        stream = s; video.srcObject = s; shutterBtn.disabled = false;
+      }).catch(function (err) { cleanup(); reject(new Error("No se pudo abrir la cámara: " + err.message)); });
 
       shutterBtn.addEventListener("click", function () {
-        if (!livePos) {
-          badge.textContent = "Aún no hay GPS — espera un segundo e intenta de nuevo.";
-          return;
-        }
+        if (!livePos) { badge.textContent = "Aún no hay GPS — espera un segundo e intenta de nuevo."; return; }
         const track = stream.getVideoTracks()[0];
         const settings = track.getSettings ? track.getSettings() : {};
         const w = settings.width || video.videoWidth || 1280;
@@ -248,10 +264,7 @@
         canvas.width = Math.round(w * scale);
         canvas.height = Math.round(h * scale);
         const ctx = canvas.getContext("2d");
-        if (facing === "user") {
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1); // la foto guardada también se espeja, como se ve en pantalla
-        }
+        if (facing === "user") { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -286,7 +299,7 @@
       steps.push("portafolio", "visibilidad", "foto_visibilidad", "carta", "foto_carta", "precios", "materiales", "foto_materiales");
       if (state.canal === "On") steps.push("capacitacion");
     } else if (state.rutina === "activacion") {
-      steps.push("foto_bengala", "foto_sembrado", "foto_consumo");
+      steps.push("foto_ritual", "foto_consumo");
     } else if (state.rutina === "matinal") {
       steps.push("foto_matinal");
     } else if (state.rutina === "prospeccion") {
@@ -296,31 +309,17 @@
     return steps;
   }
 
-  function clientesForCanal(canal) {
-    return state.clientes.filter(function (c) { return c.canal === canal; });
-  }
-
-  function setStep(idx) {
-    state.stepIndex = idx;
-    render();
-    root.scrollTop = 0;
-    window.scrollTo(0, 0);
-  }
-
+  function clientesForCanal(canal) { return state.clientes.filter(function (c) { return c.canal === canal; }); }
+  function setStep(idx) { state.stepIndex = idx; render(); root.scrollTop = 0; window.scrollTo(0, 0); }
   function goNext() {
     const steps = buildSteps();
     const errs = validateStep(steps[state.stepIndex]);
     if (errs.length) { state.submitError = errs[0]; render(); return; }
-    state.submitError = "";
-    saveDraft();
+    state.submitError = ""; saveDraft();
     if (state.stepIndex < steps.length - 1) setStep(state.stepIndex + 1);
   }
+  function goBack() { if (state.stepIndex > 0) { state.submitError = ""; setStep(state.stepIndex - 1); } }
 
-  function goBack() {
-    if (state.stepIndex > 0) { state.submitError = ""; setStep(state.stepIndex - 1); }
-  }
-
-  // ---------------- Validación por paso ----------------
   function validateStep(stepName) {
     const errs = [];
     switch (stepName) {
@@ -333,9 +332,11 @@
         } else if (state.rutina === "activacion") {
           if (!state.cliente) errs.push("Selecciona la razón social del cliente.");
         } else if (state.rutina === "matinal") {
-          if (!state.codistribuidor) errs.push("Selecciona el codistribuidor.");
+          if (!state.matinalRegion) errs.push("Selecciona la región.");
+          if (!state.matinalCodistribuidor) errs.push("Selecciona el codistribuidor.");
+          if (!state.matinalLocalidad) errs.push("Selecciona la localidad.");
         } else if (state.rutina === "prospeccion") {
-          if (!state.prospeccionCodigo) errs.push("Ingresa el código de cliente.");
+          if (!state.esClienteNuevo && !state.prospeccionCodigo) errs.push("Ingresa el código de cliente, o marca 'Es cliente nuevo'.");
           if (!state.prospeccionRazonSocial) errs.push("Ingresa la razón social.");
           if (!state.canal) errs.push("Selecciona el canal (On / Off).");
         }
@@ -343,8 +344,7 @@
       case "portafolio":
         if (state.portafolio.length === 0) errs.push("Selecciona al menos un SKU disponible (o confirma que no hay ninguno antes de continuar).");
         break;
-      case "visibilidad":
-        break;
+      case "visibilidad": break;
       case "foto_visibilidad":
         if (!state.fotoVisibilidad) errs.push("Toma la foto de contrabarra/góndola.");
         break;
@@ -363,7 +363,7 @@
         if (!state.fotoCarta) errs.push("Toma la foto de la carta.");
         break;
       case "precios":
-        PRICE_FIELDS.forEach(function (f) {
+        PRICE_FIELDS.filter(function (f) { return f.channels.indexOf(state.canal) !== -1; }).forEach(function (f) {
           const p = state.precios[f.key];
           if (!p.na && (p.value === "" || p.value === null)) errs.push("Ingresa el " + f.label + " o márcalo como 'No aplica'.");
           else if (!p.na && (isNaN(Number(p.value)) || Number(p.value) < 0)) errs.push(f.label + " debe ser un número válido.");
@@ -384,14 +384,11 @@
       case "capacitacion":
         if (state.canal === "On" && !state.capacitacion) errs.push("Indica si el barstaff necesita capacitación.");
         break;
-      case "foto_bengala":
-        if (!state.fotoBengala) errs.push("Toma la foto de servicio FDC 12+ (bengala/glorificador).");
-        break;
-      case "foto_sembrado":
-        if (!state.fotoSembrado) errs.push("Toma la foto de sembrado.");
+      case "foto_ritual":
+        if (state.fotosRitual.length < 1) errs.push("Toma al menos 1 foto del ritual servido 12+.");
         break;
       case "foto_consumo":
-        if (!state.fotoConsumo) errs.push("Toma la foto de consumo.");
+        if (state.fotosConsumo.length < 1) errs.push("Toma al menos 1 foto de consumo.");
         break;
       case "foto_matinal":
         if (!state.fotoMatinal) errs.push("Toma la foto (cámara frontal) de la Matinal/Vespertina.");
@@ -404,6 +401,9 @@
             const c = state.compraCajas[sku];
             if (!c || Number(c) <= 0) errs.push("Indica cuántas cajas de " + sku + " se compraron.");
           });
+        } else if (state.resultado === "Seguimiento") {
+          if (!state.seguimientoCajas || Number(state.seguimientoCajas) < 0) errs.push("Indica el volumen estimado de cajas de ron mensuales.");
+          if (!state.seguimientoMarca) errs.push("Indica qué marca consume actualmente.");
         }
         break;
       case "foto_checkout":
@@ -415,7 +415,6 @@
     }
     return errs;
   }
-
   function validateAll() {
     let errs = [];
     buildSteps().forEach(function (s) { errs = errs.concat(validateStep(s)); });
@@ -431,7 +430,6 @@
     if (hintText) wrap.appendChild(el("div", { class: "step-hint", style: "margin-top:6px" }, [hintText]));
     return wrap;
   }
-
   function segControl(options, value, onChange) {
     const seg = el("div", { class: "seg" }, []);
     options.forEach(function (opt) {
@@ -439,37 +437,29 @@
     });
     return seg;
   }
-
-  // Lista vertical de tarjetas de una sola selección (para elegir la rutina)
   function optionCards(options, value, onPick) {
     const wrap = el("div", { style: "display:flex; flex-direction:column; gap:10px" }, []);
     options.forEach(function (opt) {
       const active = opt.value === value;
-      wrap.appendChild(el("button", {
-        type: "button",
-        class: "chip" + (active ? " checked" : ""),
-        style: "width:100%; justify-content:flex-start; text-align:left",
-        onclick: function () { onPick(opt.value); render(); }
-      }, [el("span", { class: "chip-text", style: "font-weight:700" }, [opt.label])]));
+      wrap.appendChild(el("button", { type: "button", class: "chip" + (active ? " checked" : ""), style: "width:100%; justify-content:flex-start; text-align:left", onclick: function () { onPick(opt.value); render(); } },
+        [el("span", { class: "chip-text", style: "font-weight:700" }, [opt.label])]));
     });
     return wrap;
   }
-
-  function chipMultiSelect(list, selected, onToggle, disabledPredicate) {
+  function chipMultiSelect(list, selected, onToggle, disabledPredicate, canalForStar) {
     const grid = el("div", { class: "chip-grid" }, []);
     list.forEach(function (item) {
       const checked = selected.indexOf(item) !== -1;
       const disabled = disabledPredicate ? disabledPredicate(item) : false;
       const cb = el("input", { type: "checkbox" });
       cb.checked = checked; cb.disabled = disabled;
-      const chip = el("label", { class: "chip" + (checked ? " checked" : "") + (disabled ? " disabled" : "") }, [cb, el("span", { class: "chip-text" }, [item])]);
+      const label = (canalForStar && isStarred(item, canalForStar) ? "⭐ " : "") + item;
+      const chip = el("label", { class: "chip" + (checked ? " checked" : "") + (disabled ? " disabled" : "") }, [cb, el("span", { class: "chip-text" }, [label])]);
       cb.addEventListener("change", function () { onToggle(item); render(); });
       grid.appendChild(chip);
     });
     return grid;
   }
-
-  // SKU + cantidad de cajas (para el resultado "Compra" de Prospección)
   function skuQuantitySelector(list, selected, quantities, onToggle, onQtyChange) {
     const wrap = el("div", { style: "display:flex; flex-direction:column; gap:10px" }, []);
     list.forEach(function (sku) {
@@ -481,11 +471,7 @@
       const left = el("label", { style: "display:flex; align-items:center; gap:10px; flex:1" }, [cb, el("span", { class: "chip-text" }, [sku])]);
       row.appendChild(left);
       if (checked) {
-        const qty = el("input", {
-          type: "number", min: "1", inputmode: "numeric", placeholder: "Cajas",
-          style: "width:84px; min-height:40px; text-align:center",
-          value: quantities[sku] || ""
-        });
+        const qty = el("input", { type: "number", min: "1", inputmode: "numeric", placeholder: "Cajas", style: "width:84px; min-height:40px; text-align:center", value: quantities[sku] || "" });
         qty.addEventListener("input", function (e) { onQtyChange(sku, e.target.value); });
         row.appendChild(qty);
       }
@@ -493,15 +479,12 @@
     });
     return wrap;
   }
-
   function photoSlot(current, label, facing, onCapture) {
     if (current) {
       return el("div", { class: "photo-slot filled" }, [
         el("img", { src: current.dataUrl, alt: label }),
         el("div", { class: "photo-meta" }, ["Capturada " + fmtTimestamp(new Date(current.timestamp)) + " · GPS " + fmtCoord(current.lat) + ", " + fmtCoord(current.lng)]),
-        el("div", { style: "padding:10px" }, [
-          el("button", { class: "camera-btn", type: "button", onclick: function () { openCamera(label, facing).then(function (photo) { onCapture(photo); render(); }).catch(function () {}); } }, ["Repetir foto"])
-        ])
+        el("div", { style: "padding:10px" }, [el("button", { class: "camera-btn", type: "button", onclick: function () { openCamera(label, facing).then(function (photo) { onCapture(photo); render(); }).catch(function () {}); } }, ["Repetir foto"])])
       ]);
     }
     return el("div", { class: "photo-slot" }, [
@@ -509,7 +492,25 @@
       el("button", { class: "camera-btn", type: "button", onclick: function () { openCamera(label, facing).then(function (photo) { onCapture(photo); render(); }).catch(function () {}); } }, ["📷 Abrir cámara"])
     ]);
   }
-
+  function photoMultiSlot(photos, label, facing, minCount, onAdd, onRemove) {
+    const wrap = el("div", {}, []);
+    if (photos.length) {
+      const grid = el("div", { class: "chip-grid" }, []);
+      photos.forEach(function (p, i) {
+        grid.appendChild(el("div", { class: "photo-slot filled" }, [
+          el("img", { src: p.dataUrl, alt: label + " " + (i + 1) }),
+          el("div", { class: "photo-meta" }, [fmtTimestamp(new Date(p.timestamp))]),
+          el("div", { style: "padding:8px" }, [el("button", { class: "camera-btn", type: "button", style: "background:transparent; color:var(--white); border:1.5px solid var(--tint-30)", onclick: function () { onRemove(i); render(); } }, ["Quitar"])])
+        ]));
+      });
+      wrap.appendChild(grid);
+      wrap.appendChild(el("p", { class: "step-hint", style: "margin-top:12px" }, [photos.length + " foto(s) · mínimo " + minCount + "."]));
+    } else {
+      wrap.appendChild(el("p", { class: "step-hint", style: "margin-top:0" }, ["Se abrirá la cámara en vivo. Mínimo " + minCount + " foto(s), sin máximo."]));
+    }
+    wrap.appendChild(el("button", { class: "camera-btn", type: "button", style: "margin-top:10px", onclick: function () { openCamera(label, facing).then(function (photo) { onAdd(photo); render(); }).catch(function () {}); } }, [photos.length ? "📷 Agregar otra foto" : "📷 Abrir cámara"]));
+    return wrap;
+  }
   function searchableSelect(list, value, placeholder, onPick) {
     const wrap = el("div", { class: "searchbox" }, []);
     const input = el("input", { type: "search", placeholder: placeholder, value: value || "" });
@@ -521,9 +522,7 @@
       const filtered = list.filter(function (name) { return name.toLowerCase().indexOf((filter || "").toLowerCase()) !== -1; }).slice(0, 30);
       if (filtered.length === 0) return;
       listBox = el("div", { class: "searchbox-list" }, []);
-      filtered.forEach(function (name) {
-        listBox.appendChild(el("button", { type: "button", onclick: function () { onPick(name); closeList(); render(); } }, [name]));
-      });
+      filtered.forEach(function (name) { listBox.appendChild(el("button", { type: "button", onclick: function () { onPick(name); closeList(); render(); } }, [name])); });
       wrap.appendChild(listBox);
     }
     input.addEventListener("focus", function () { openList(input.value); });
@@ -538,7 +537,8 @@
   function viewIdentificacion() {
     const nodes = [
       el("h2", { class: "step-title" }, ["Datos de la visita"]),
-      el("p", { class: "step-hint" }, ["Completa esto de pie, dentro del punto de venta."])
+      el("p", { class: "step-hint" }, ["Completa esto de pie, dentro del punto de venta."]),
+      el("button", { class: "camera-btn", type: "button", style: "margin-bottom:20px; background:transparent; color:var(--white); border:1.5px solid var(--tint-30)", onclick: function () { state.view = "resumen"; if (!state.resumenData) fetchResumen(); else render(); } }, ["📊 Ver resumen"])
     ];
 
     nodes.push(fieldWrap("Ejecutivo", true,
@@ -579,18 +579,43 @@
           : el("input", { type: "text", placeholder: "Escribe la razón social", value: state.cliente, oninput: function (e) { state.cliente = e.target.value; } })
       ));
     } else if (state.rutina === "matinal") {
-      nodes.push(fieldWrap("Codistribuidor", true,
-        state.codistribuidores.length
-          ? searchableSelect(state.codistribuidores, state.codistribuidor, "Buscar codistribuidor…", function (name) { state.codistribuidor = name; })
-          : el("input", { type: "text", placeholder: "Escribe el codistribuidor", value: state.codistribuidor, oninput: function (e) { state.codistribuidor = e.target.value; } })
+      const regs = regiones();
+      nodes.push(fieldWrap("Región", true,
+        regs.length
+          ? el("select", { onchange: function (e) { state.matinalRegion = e.target.value; state.matinalCodistribuidor = ""; state.matinalLocalidad = ""; render(); } },
+              [el("option", { value: "" }, ["Selecciona…"])].concat(regs.map(function (r) {
+                const o = el("option", { value: r }, [r]);
+                if (r === state.matinalRegion) o.setAttribute("selected", "true");
+                return o;
+              })))
+          : el("input", { type: "text", placeholder: "Escribe la región", value: state.matinalRegion, oninput: function (e) { state.matinalRegion = e.target.value; } })
       ));
+      if (state.matinalRegion) {
+        const codis = codistribuidoresEnRegion(state.matinalRegion);
+        nodes.push(fieldWrap("Codistribuidor", true, searchableSelect(codis, state.matinalCodistribuidor, "Buscar codistribuidor…", function (name) { state.matinalCodistribuidor = name; state.matinalLocalidad = ""; })));
+      }
+      if (state.matinalRegion && state.matinalCodistribuidor) {
+        const locs = localidadesDe(state.matinalRegion, state.matinalCodistribuidor);
+        nodes.push(fieldWrap("Localidad", true,
+          locs.length
+            ? el("select", { onchange: function (e) { state.matinalLocalidad = e.target.value; render(); } },
+                [el("option", { value: "" }, ["Selecciona…"])].concat(locs.map(function (l) {
+                  const o = el("option", { value: l }, [l]);
+                  if (l === state.matinalLocalidad) o.setAttribute("selected", "true");
+                  return o;
+                })))
+            : el("input", { type: "text", placeholder: "Escribe la localidad", value: state.matinalLocalidad, oninput: function (e) { state.matinalLocalidad = e.target.value; } })
+        ));
+      }
     } else if (state.rutina === "prospeccion") {
-      nodes.push(fieldWrap("Código de cliente", true,
-        el("input", { type: "text", placeholder: "Código", value: state.prospeccionCodigo, oninput: function (e) { state.prospeccionCodigo = e.target.value; } })
-      ));
-      nodes.push(fieldWrap("Razón social", true,
-        el("input", { type: "text", placeholder: "Razón social", value: state.prospeccionRazonSocial, oninput: function (e) { state.prospeccionRazonSocial = e.target.value; } })
-      ));
+      const nuevoCb = el("input", { type: "checkbox" });
+      nuevoCb.checked = state.esClienteNuevo;
+      nuevoCb.addEventListener("change", function () { state.esClienteNuevo = nuevoCb.checked; if (state.esClienteNuevo) state.prospeccionCodigo = ""; render(); });
+      nodes.push(el("div", { class: "field" }, [el("label", { class: "chip" + (state.esClienteNuevo ? " checked" : ""), style: "width:100%" }, [nuevoCb, el("span", { class: "chip-text" }, ["Es cliente nuevo (sin código en el sistema)"])])]));
+      if (!state.esClienteNuevo) {
+        nodes.push(fieldWrap("Código de cliente", true, el("input", { type: "text", placeholder: "Código", value: state.prospeccionCodigo, oninput: function (e) { state.prospeccionCodigo = e.target.value; } })));
+      }
+      nodes.push(fieldWrap("Razón social", true, el("input", { type: "text", placeholder: "Razón social", value: state.prospeccionRazonSocial, oninput: function (e) { state.prospeccionRazonSocial = e.target.value; } })));
       nodes.push(fieldWrap("Canal", true, segControl(["On", "Off"], state.canal, function (v) { state.canal = v; })));
     }
     return nodes;
@@ -599,48 +624,35 @@
   function viewPortafolio() {
     return [
       el("h2", { class: "step-title" }, ["Portafolio"]),
-      el("p", { class: "step-hint" }, ["Selecciona qué SKUs de Flor de Caña están disponibles en este punto de venta."]),
-      chipMultiSelect(state.skus, state.portafolio, function (sku) {
+      el("p", { class: "step-hint" }, ["Selecciona qué SKUs de Flor de Caña están disponibles en este punto de venta. ⭐ = producto foco en este canal."]),
+      chipMultiSelect(skuNames(), state.portafolio, function (sku) {
         const i = state.portafolio.indexOf(sku);
         if (i === -1) state.portafolio.push(sku);
-        else {
-          state.portafolio.splice(i, 1);
-          const vi = state.visibilidad.indexOf(sku);
-          if (vi !== -1) state.visibilidad.splice(vi, 1);
-        }
-      })
+        else { state.portafolio.splice(i, 1); const vi = state.visibilidad.indexOf(sku); if (vi !== -1) state.visibilidad.splice(vi, 1); }
+      }, null, state.canal)
     ];
   }
-
   function viewVisibilidad() {
     return [
       el("h2", { class: "step-title" }, ["Visibilidad en contrabarra/góndola"]),
       el("p", { class: "step-hint" }, ["Selecciona qué SKUs, de los ya marcados como disponibles, están visibles al cliente."]),
-      chipMultiSelect(state.skus, state.visibilidad, function (sku) {
+      chipMultiSelect(skuNames(), state.visibilidad, function (sku) {
         const i = state.visibilidad.indexOf(sku);
         if (i === -1) state.visibilidad.push(sku); else state.visibilidad.splice(i, 1);
-      }, function (sku) { return state.portafolio.indexOf(sku) === -1; })
+      }, function (sku) { return state.portafolio.indexOf(sku) === -1; }, state.canal)
     ];
   }
-
   function viewFotoVisibilidad() {
-    return [
-      el("h2", { class: "step-title" }, ["Foto de contrabarra/góndola"]),
-      el("p", { class: "step-hint" }, ["La hora, fecha y GPS quedan grabados en la imagen automáticamente."]),
-      photoSlot(state.fotoVisibilidad, "Visibilidad", "environment", function (p) { state.fotoVisibilidad = p; })
-    ];
+    return [el("h2", { class: "step-title" }, ["Foto de contrabarra/góndola"]), photoSlot(state.fotoVisibilidad, "Visibilidad", "environment", function (p) { state.fotoVisibilidad = p; })];
   }
-
   function viewCarta() {
     const nodes = [el("h2", { class: "step-title" }, ["Carta"])];
     if (state.canal === "On") {
       nodes.push(fieldWrap("¿Hay cócteles FDC en carta?", true, segControl(["Si", "No"], state.cartaCocteles, function (v) { state.cartaCocteles = v; })));
-      if (state.cartaCocteles === "Si") {
-        nodes.push(fieldWrap("¿Cuántos?", true, el("input", { type: "number", min: "0", inputmode: "numeric", value: state.cartaCantidadCocteles, oninput: function (e) { state.cartaCantidadCocteles = e.target.value; } })));
-      }
+      if (state.cartaCocteles === "Si") nodes.push(fieldWrap("¿Cuántos?", true, el("input", { type: "number", min: "0", inputmode: "numeric", value: state.cartaCantidadCocteles, oninput: function (e) { state.cartaCantidadCocteles = e.target.value; } })));
       nodes.push(fieldWrap("¿Hay botellas FDC en carta?", true, segControl(["Si", "No"], state.cartaBotellasSiNo, function (v) { state.cartaBotellasSiNo = v; })));
       if (state.cartaBotellasSiNo === "Si") {
-        nodes.push(fieldWrap("¿Cuáles?", true, chipMultiSelect(state.skus, state.cartaListaBotellas, function (sku) {
+        nodes.push(fieldWrap("¿Cuáles?", true, chipMultiSelect(skuNames(), state.cartaListaBotellas, function (sku) {
           const i = state.cartaListaBotellas.indexOf(sku);
           if (i === -1) state.cartaListaBotellas.push(sku); else state.cartaListaBotellas.splice(i, 1);
         })));
@@ -651,39 +663,23 @@
     }
     return nodes;
   }
-
   function viewFotoCarta() {
     return [el("h2", { class: "step-title" }, ["Foto de carta"]), photoSlot(state.fotoCarta, "Carta", "environment", function (p) { state.fotoCarta = p; })];
   }
-
   function priceField(f) {
     const p = state.precios[f.key];
-    const input = el("input", {
-      type: "number", min: "0", step: "0.01", inputmode: "decimal", placeholder: "0.00",
-      value: p.value, disabled: p.na ? "true" : null,
-      oninput: function (e) { p.value = e.target.value; }
-    });
+    const input = el("input", { type: "number", min: "0", step: "0.01", inputmode: "decimal", placeholder: "0.00", value: p.value, disabled: p.na ? "true" : null, oninput: function (e) { p.value = e.target.value; } });
     const naCb = el("input", { type: "checkbox" });
     naCb.checked = p.na;
     naCb.addEventListener("change", function () { p.na = naCb.checked; if (p.na) p.value = ""; render(); });
-    const naLabel = el("label", { style: "display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13.5px; color:var(--paper-dim)" }, [naCb, "No aplica en este punto de venta"]);
-    return el("div", { class: "field" }, [
-      el("label", { class: "field-label field-required" }, [f.label]),
-      input, naLabel
-    ]);
+    const naLabel = el("label", { style: "display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13.5px; color:var(--tint-75)" }, [naCb, "No aplica en este punto de venta"]);
+    return el("div", { class: "field" }, [el("label", { class: "field-label field-required" }, [f.label]), input, naLabel]);
   }
-
   function viewPrecios() {
-    return [
-      el("h2", { class: "step-title" }, ["Precio"]),
-      el("p", { class: "step-hint" }, ["Ingresa el PVP vigente, o marca 'No aplica' si ese producto no se vende en este punto de venta."])
-    ].concat(PRICE_FIELDS.map(priceField));
+    const applicable = PRICE_FIELDS.filter(function (f) { return f.channels.indexOf(state.canal) !== -1; });
+    return [el("h2", { class: "step-title" }, ["Precio"]), el("p", { class: "step-hint" }, ["Ingresa el PVP vigente, o marca 'No aplica' si ese producto no se vende en este punto de venta."])].concat(applicable.map(priceField));
   }
-
-  function materialField(key, label) {
-    return fieldWrap(label, true, segControl(["Si", "No", "No aplica"], state.materiales[key], function (v) { state.materiales[key] = v; }));
-  }
-
+  function materialField(key, label) { return fieldWrap(label, true, segControl(["Si", "No", "No aplica"], state.materiales[key], function (v) { state.materiales[key] = v; })); }
   function viewMateriales() {
     const nodes = [el("h2", { class: "step-title" }, ["Materiales"])];
     if (state.canal === "On") {
@@ -697,54 +693,40 @@
     }
     return nodes;
   }
-
   function viewFotoMateriales() {
     return [el("h2", { class: "step-title" }, ["Foto de materiales"]), photoSlot(state.fotoMateriales, "Materiales", "environment", function (p) { state.fotoMateriales = p; })];
   }
-
   function viewCapacitacion() {
     return [el("h2", { class: "step-title" }, ["Capacitación"]), fieldWrap("¿El barstaff necesita capacitación?", true, segControl(["Si", "No"], state.capacitacion, function (v) { state.capacitacion = v; }))];
   }
-
-  function viewFotoBengala() {
+  function viewFotoRitual() {
     return [
-      el("h2", { class: "step-title" }, ["Foto de servicio FDC 12+"]),
-      el("p", { class: "step-hint" }, ["Bengala o glorificador."]),
-      photoSlot(state.fotoBengala, "Servicio FDC 12+", "environment", function (p) { state.fotoBengala = p; })
+      el("h2", { class: "step-title" }, ["Foto ritual servido 12+"]),
+      photoMultiSlot(state.fotosRitual, "Ritual servido 12+", "environment", 1, function (p) { state.fotosRitual.push(p); }, function (i) { state.fotosRitual.splice(i, 1); })
     ];
-  }
-  function viewFotoSembrado() {
-    return [el("h2", { class: "step-title" }, ["Foto de sembrado"]), photoSlot(state.fotoSembrado, "Sembrado", "environment", function (p) { state.fotoSembrado = p; })];
   }
   function viewFotoConsumo() {
-    return [el("h2", { class: "step-title" }, ["Foto de consumo"]), photoSlot(state.fotoConsumo, "Consumo", "environment", function (p) { state.fotoConsumo = p; })];
-  }
-
-  function viewFotoMatinal() {
     return [
-      el("h2", { class: "step-title" }, ["Foto Matinal/Vespertina"]),
-      el("p", { class: "step-hint" }, ["Esta foto usa la cámara frontal."]),
-      photoSlot(state.fotoMatinal, "Matinal/Vespertina", "user", function (p) { state.fotoMatinal = p; })
+      el("h2", { class: "step-title" }, ["Foto de consumo"]),
+      photoMultiSlot(state.fotosConsumo, "Consumo", "environment", 1, function (p) { state.fotosConsumo.push(p); }, function (i) { state.fotosConsumo.splice(i, 1); })
     ];
   }
-
+  function viewFotoMatinal() {
+    return [el("h2", { class: "step-title" }, ["Foto Matinal/Vespertina"]), el("p", { class: "step-hint" }, ["Esta foto usa la cámara frontal."]), photoSlot(state.fotoMatinal, "Matinal/Vespertina", "user", function (p) { state.fotoMatinal = p; })];
+  }
   function viewResultadoProspeccion() {
-    const nodes = [
-      el("h2", { class: "step-title" }, ["Resultado de la visita"]),
-      fieldWrap("Resultado", true, segControl(["Compra", "Seguimiento", "Rechazado"], state.resultado, function (v) { state.resultado = v; }))
-    ];
+    const nodes = [el("h2", { class: "step-title" }, ["Resultado de la visita"]), fieldWrap("Resultado", true, segControl(["Compra", "Seguimiento"], state.resultado, function (v) { state.resultado = v; }))];
     if (state.resultado === "Compra") {
-      nodes.push(fieldWrap("¿Qué compró y cuántas cajas?", true,
-        skuQuantitySelector(state.skus, state.compraSkus, state.compraCajas, function (sku) {
-          const i = state.compraSkus.indexOf(sku);
-          if (i === -1) state.compraSkus.push(sku);
-          else { state.compraSkus.splice(i, 1); delete state.compraCajas[sku]; }
-        }, function (sku, val) { state.compraCajas[sku] = val; })
-      ));
+      nodes.push(fieldWrap("¿Qué compró y cuántas cajas?", true, skuQuantitySelector(skuNames(), state.compraSkus, state.compraCajas, function (sku) {
+        const i = state.compraSkus.indexOf(sku);
+        if (i === -1) state.compraSkus.push(sku); else { state.compraSkus.splice(i, 1); delete state.compraCajas[sku]; }
+      }, function (sku, val) { state.compraCajas[sku] = val; })));
+    } else if (state.resultado === "Seguimiento") {
+      nodes.push(fieldWrap("Volumen estimado de cajas de ron mensuales", true, el("input", { type: "number", min: "0", inputmode: "numeric", value: state.seguimientoCajas, oninput: function (e) { state.seguimientoCajas = e.target.value; } })));
+      nodes.push(fieldWrap("¿Qué marca consume actualmente?", true, el("input", { type: "text", placeholder: "Marca", value: state.seguimientoMarca, oninput: function (e) { state.seguimientoMarca = e.target.value; } })));
     }
     return nodes;
   }
-
   function viewFotoCheckout() {
     return [el("h2", { class: "step-title" }, ["Foto de check out"]), photoSlot(state.fotoCheckout, "Check out", "environment", function (p) { state.fotoCheckout = p; })];
   }
@@ -753,14 +735,12 @@
     getPosition(12000).then(function (pos) { state.gpsEnvio = pos; render(); })
       .catch(function () { state.gpsEnvio = null; state.submitError = "No se pudo obtener la ubicación. Activa el GPS y vuelve a intentar."; render(); });
   }
-
   function entidadVisitada() {
     if (state.rutina === "cartera" || state.rutina === "activacion") return state.cliente;
-    if (state.rutina === "matinal") return state.codistribuidor;
+    if (state.rutina === "matinal") return state.matinalCodistribuidor + " (" + state.matinalLocalidad + ")";
     if (state.rutina === "prospeccion") return state.prospeccionRazonSocial;
     return "";
   }
-
   function viewRevision() {
     if (!state.gpsEnvio && !state._gpsRequested) { state._gpsRequested = true; requestFinalGps(); }
     const rows = [
@@ -769,15 +749,10 @@
       ["Entidad visitada", entidadVisitada()],
       ["Ubicación de envío", state.gpsEnvio ? (fmtCoord(state.gpsEnvio.lat) + ", " + fmtCoord(state.gpsEnvio.lng) + " (±" + Math.round(state.gpsEnvio.acc) + " m)") : "Obteniendo…"]
     ];
-    if (state.rutina === "cartera") rows.splice(2, 0, ["Canal", state.canal]);
-    const nodes = [
-      el("h2", { class: "step-title" }, ["Revisión y envío"]),
-      el("p", { class: "step-hint" }, ["Verifica los datos antes de enviar."])
-    ];
+    if (state.rutina === "cartera" || state.rutina === "prospeccion") rows.splice(2, 0, ["Canal", state.canal]);
+    const nodes = [el("h2", { class: "step-title" }, ["Revisión y envío"]), el("p", { class: "step-hint" }, ["Verifica los datos antes de enviar."])];
     rows.forEach(function (r) { nodes.push(el("div", { class: "summary-row" }, [el("span", { class: "k" }, [r[0]]), el("span", { class: "v" }, [String(r[1])])])); });
-    if (!state.gpsEnvio) {
-      nodes.push(el("button", { class: "camera-btn", type: "button", style: "margin-top:14px", onclick: function () { requestFinalGps(); } }, ["Reintentar ubicación"]));
-    }
+    if (!state.gpsEnvio) nodes.push(el("button", { class: "camera-btn", type: "button", style: "margin-top:14px", onclick: function () { requestFinalGps(); } }, ["Reintentar ubicación"]));
     return nodes;
   }
 
@@ -786,17 +761,16 @@
     portafolio: viewPortafolio, visibilidad: viewVisibilidad, foto_visibilidad: viewFotoVisibilidad,
     carta: viewCarta, foto_carta: viewFotoCarta, precios: viewPrecios,
     materiales: viewMateriales, foto_materiales: viewFotoMateriales, capacitacion: viewCapacitacion,
-    foto_bengala: viewFotoBengala, foto_sembrado: viewFotoSembrado, foto_consumo: viewFotoConsumo,
+    foto_ritual: viewFotoRitual, foto_consumo: viewFotoConsumo,
     foto_matinal: viewFotoMatinal,
     resultado_prospeccion: viewResultadoProspeccion, foto_checkout: viewFotoCheckout,
     revision: viewRevision
   };
-
   const STEP_LABELS = {
     identificacion: "Identificación", portafolio: "Portafolio", visibilidad: "Visibilidad",
     foto_visibilidad: "Foto visibilidad", carta: "Carta", foto_carta: "Foto carta",
     precios: "Precios", materiales: "Materiales", foto_materiales: "Foto materiales", capacitacion: "Capacitación",
-    foto_bengala: "Foto servicio", foto_sembrado: "Foto sembrado", foto_consumo: "Foto consumo",
+    foto_ritual: "Foto ritual", foto_consumo: "Foto consumo",
     foto_matinal: "Foto matinal", resultado_prospeccion: "Resultado", foto_checkout: "Foto check out",
     revision: "Revisión"
   };
@@ -805,14 +779,7 @@
   // Envío
   // ---------------------------------------------------------------
   function buildPayload() {
-    const base = {
-      token: CFG.SHARED_TOKEN,
-      ejecutivo: state.ejecutivo,
-      rutina: state.rutina,
-      gps_envio: state.gpsEnvio,
-      submitted_at_local: new Date().toISOString(),
-      app_version: "2.0"
-    };
+    const base = { token: CFG.SHARED_TOKEN, ejecutivo: state.ejecutivo, rutina: state.rutina, gps_envio: state.gpsEnvio, submitted_at_local: new Date().toISOString(), app_version: "4.0" };
     if (state.rutina === "cartera") {
       return Object.assign(base, {
         canal: state.canal, cliente: state.cliente,
@@ -841,21 +808,21 @@
       });
     }
     if (state.rutina === "activacion") {
-      return Object.assign(base, {
-        cliente: state.cliente,
-        foto_bengala: state.fotoBengala, foto_sembrado: state.fotoSembrado, foto_consumo: state.fotoConsumo
-      });
+      return Object.assign(base, { cliente: state.cliente, fotos_ritual: state.fotosRitual, fotos_consumo: state.fotosConsumo });
     }
     if (state.rutina === "matinal") {
-      return Object.assign(base, { codistribuidor: state.codistribuidor, foto_matinal: state.fotoMatinal });
+      return Object.assign(base, { region: state.matinalRegion, codistribuidor: state.matinalCodistribuidor, localidad: state.matinalLocalidad, foto_matinal: state.fotoMatinal });
     }
     if (state.rutina === "prospeccion") {
       return Object.assign(base, {
-        prospeccion_codigo: state.prospeccionCodigo,
+        es_cliente_nuevo: state.esClienteNuevo,
+        prospeccion_codigo: state.esClienteNuevo ? "" : state.prospeccionCodigo,
         prospeccion_razon_social: state.prospeccionRazonSocial,
         canal: state.canal,
         resultado: state.resultado,
         compra_detalle: state.resultado === "Compra" ? state.compraSkus.map(function (sku) { return { sku: sku, cajas: state.compraCajas[sku] }; }) : [],
+        seguimiento_cajas: state.resultado === "Seguimiento" ? state.seguimientoCajas : "",
+        seguimiento_marca: state.resultado === "Seguimiento" ? state.seguimientoMarca : "",
         foto_checkout: state.fotoCheckout
       });
     }
@@ -872,16 +839,11 @@
     }
     const payload = buildPayload();
     try { localStorage.setItem(PENDING_KEY, JSON.stringify(payload)); } catch (e) {}
-
     state.submitting = true; state.submitError = ""; render();
-
     try {
-      // Sin encabezados personalizados a propósito: evita el preflight CORS
-      // que Google Apps Script no responde bien.
       const res = await fetch(CFG.APPS_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) });
       const data = await res.json();
       if (!data || !data.ok) throw new Error((data && data.error) || "El backend respondió con un error.");
-
       try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
       clearDraft();
       state.submitting = false;
@@ -907,28 +869,91 @@
   function resetForNext() {
     const keepEjecutivo = state.ejecutivo;
     Object.assign(state, {
+      view: "form",
       stepIndex: 0, submitting: false, submitError: "", _gpsRequested: false,
       ejecutivo: keepEjecutivo, rutina: "", canal: "", cliente: "",
       portafolio: [], visibilidad: [], fotoVisibilidad: null,
       cartaCocteles: "", cartaCantidadCocteles: "", cartaBotellasSiNo: "",
       cartaListaBotellas: [], cartaActivacionMenu: "", cartaCombosOff: "", fotoCarta: null,
       precios: freshPrecios(), materiales: freshMateriales(), fotoMateriales: null, capacitacion: "",
-      fotoBengala: null, fotoSembrado: null, fotoConsumo: null,
-      codistribuidor: "", fotoMatinal: null,
-      prospeccionCodigo: "", prospeccionRazonSocial: "", resultado: "", compraSkus: [], compraCajas: {}, fotoCheckout: null,
+      fotosRitual: [], fotosConsumo: [],
+      matinalRegion: "", matinalCodistribuidor: "", matinalLocalidad: "", fotoMatinal: null,
+      esClienteNuevo: false, prospeccionCodigo: "", prospeccionRazonSocial: "", resultado: "",
+      compraSkus: [], compraCajas: {}, seguimientoCajas: "", seguimientoMarca: "", fotoCheckout: null,
       gpsEnvio: null
     });
     render();
   }
 
   // ---------------------------------------------------------------
+  // Resumen — render
+  // ---------------------------------------------------------------
+  function resumenCard(entry, bucketKey) {
+    const b = entry[bucketKey];
+    return el("div", { class: "resumen-card" }, [
+      el("div", { class: "resumen-card-header" }, [el("strong", {}, [entry.ejecutivo]), el("span", { class: "resumen-total" }, [String(b.total)])]),
+      el("div", { class: "resumen-stats" }, [
+        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.cartera)]), el("span", { class: "resumen-stat-label" }, ["Cartera"])]),
+        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.activacion)]), el("span", { class: "resumen-stat-label" }, ["Activación"])]),
+        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.matinal)]), el("span", { class: "resumen-stat-label" }, ["Matinal"])]),
+        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.prospeccion)]), el("span", { class: "resumen-stat-label" }, ["Prospección"])])
+      ])
+    ]);
+  }
+
+  function renderResumen() {
+    root.innerHTML = "";
+    const header = el("div", { class: "app-header" }, [
+      el("div", { class: "brand" }, [el("img", { src: "assets/logo-white.png", alt: "Flor de Caña", class: "brand-logo" }), el("span", { class: "brand-sub" }, ["Resumen"])])
+    ]);
+    const body = el("div", { class: "app-body" }, []);
+
+    body.appendChild(segControl(["Día", "Mes"], state.resumenTab === "dia" ? "Día" : "Mes", function (v) { state.resumenTab = v === "Día" ? "dia" : "mes"; }));
+
+    if (state.resumenTab === "dia") {
+      const dayInput = el("input", { type: "date", value: state.resumenDay, style: "margin-top:14px" });
+      dayInput.addEventListener("change", function (e) { state.resumenDay = e.target.value; fetchResumen(); });
+      body.appendChild(dayInput);
+    } else {
+      const monthInput = el("input", { type: "month", value: state.resumenMonth, style: "margin-top:14px" });
+      monthInput.addEventListener("change", function (e) { state.resumenMonth = e.target.value; fetchResumen(); });
+      body.appendChild(monthInput);
+    }
+
+    if (state.resumenError) body.appendChild(el("div", { class: "error-banner", style: "margin-top:16px" }, [state.resumenError]));
+
+    if (state.resumenLoading) {
+      body.appendChild(el("p", { class: "step-hint", style: "margin-top:16px" }, [el("span", { class: "spinner" }, []), " Cargando…"]));
+    } else if (state.resumenData) {
+      const bucketKey = state.resumenTab === "dia" ? "day" : "month";
+      const totalGeneral = state.resumenData.ejecutivos.reduce(function (sum, e) { return sum + e[bucketKey].total; }, 0);
+      body.appendChild(el("div", { class: "summary-row", style: "margin-top:16px; font-size:16px" }, [
+        el("span", { class: "k" }, ["Total " + (state.resumenTab === "dia" ? state.resumenData.day : state.resumenData.month)]),
+        el("span", { class: "v" }, [String(totalGeneral)])
+      ]));
+      const list = el("div", { style: "display:flex; flex-direction:column; gap:10px; margin-top:14px" }, []);
+      state.resumenData.ejecutivos.forEach(function (entry) { list.appendChild(resumenCard(entry, bucketKey)); });
+      body.appendChild(list);
+    }
+
+    const footer = el("div", { class: "app-footer" }, [
+      el("button", { class: "btn btn-primary", type: "button", onclick: function () { state.view = "form"; render(); } }, ["Volver al cuestionario"])
+    ]);
+
+    root.appendChild(header);
+    root.appendChild(body);
+    root.appendChild(footer);
+  }
+
+  // ---------------------------------------------------------------
   // Render principal
   // ---------------------------------------------------------------
   function render() {
+    if (state.view === "resumen") { renderResumen(); return; }
+
     const steps = buildSteps();
     if (state.stepIndex >= steps.length) state.stepIndex = steps.length - 1;
     const stepName = steps[state.stepIndex];
-
     root.innerHTML = "";
 
     const header = el("div", { class: "app-header" }, [
