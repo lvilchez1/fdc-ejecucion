@@ -309,7 +309,7 @@
     return steps;
   }
 
-  function clientesForCanal(canal) { return state.clientes.filter(function (c) { return c.canal === canal; }); }
+  function clientesForCanal(canal) { return state.clientes.filter(function (c) { return c.canal === canal && c.ejecutivo === state.ejecutivo; }); }
   function setStep(idx) { state.stepIndex = idx; render(); root.scrollTop = 0; window.scrollTo(0, 0); }
   function goNext() {
     const steps = buildSteps();
@@ -543,7 +543,7 @@
 
     nodes.push(fieldWrap("Ejecutivo", true,
       state.ejecutivos.length
-        ? el("select", { onchange: function (e) { state.ejecutivo = e.target.value; render(); } },
+        ? el("select", { onchange: function (e) { state.ejecutivo = e.target.value; state.cliente = ""; render(); } },
             [el("option", { value: "" }, ["Selecciona…"])].concat(state.ejecutivos.map(function (n) {
               const o = el("option", { value: n }, [n]);
               if (n === state.ejecutivo) o.setAttribute("selected", "true");
