@@ -310,7 +310,8 @@
       }
       steps.push("implementacion_fdc");
       if (state.implementacionFDC === "Si") steps.push("foto_implementacion");
-      steps.push("carta", "foto_carta", "precios", "materiales");
+      if (state.canal === "On") steps.push("carta", "foto_carta");
+      steps.push("precios", "materiales");
       const onNecesitaFotoMateriales = ["vasos_pavonados", "hieleras", "vasos_vidrio", "barmats"].some(function (k) { return state.materiales[k] === "Si"; });
       if ((state.canal === "On" && onNecesitaFotoMateriales) || (state.canal === "Off" && state.materiales.banner_promos === "Si")) steps.push("foto_materiales");
       if (state.canal === "On") steps.push("capacitacion");
@@ -377,15 +378,11 @@
         if (!state.fotoImplementacion) errs.push("Toma la foto de la implementación FDC.");
         break;
       case "carta":
-        if (state.canal === "On") {
-          if (!state.cartaCocteles) errs.push("Indica si hay cócteles FDC (Sí/No).");
-          if (state.cartaCocteles === "Si" && !state.cartaCantidadCocteles) errs.push("Indica cuántos cócteles FDC hay.");
-          if (!state.cartaBotellasSiNo) errs.push("Indica si hay botellas FDC (Sí/No).");
-          if (state.cartaBotellasSiNo === "Si" && state.cartaListaBotellas.length === 0) errs.push("Selecciona qué botellas FDC hay en carta.");
-          if (!state.cartaActivacionMenu) errs.push("Indica si hay activación en el menú.");
-        } else if (state.canal === "Off") {
-          if (!state.cartaCombosOff) errs.push("Indica si hay comunicación de combos FDC.");
-        }
+        if (!state.cartaCocteles) errs.push("Indica si hay cócteles FDC (Sí/No).");
+        if (state.cartaCocteles === "Si" && !state.cartaCantidadCocteles) errs.push("Indica cuántos cócteles FDC hay.");
+        if (!state.cartaBotellasSiNo) errs.push("Indica si hay botellas FDC (Sí/No).");
+        if (state.cartaBotellasSiNo === "Si" && state.cartaListaBotellas.length === 0) errs.push("Selecciona qué botellas FDC hay en carta.");
+        if (!state.cartaActivacionMenu) errs.push("Indica si hay activación en el menú.");
         break;
       case "foto_carta":
         if (!state.fotoCarta) errs.push("Toma la foto de la carta.");
@@ -698,20 +695,16 @@
   }
   function viewCarta() {
     const nodes = [el("h2", { class: "step-title" }, ["Carta"])];
-    if (state.canal === "On") {
-      nodes.push(fieldWrap("¿Hay cócteles FDC en carta?", true, segControl(["Si", "No"], state.cartaCocteles, function (v) { state.cartaCocteles = v; })));
-      if (state.cartaCocteles === "Si") nodes.push(fieldWrap("¿Cuántos?", true, el("input", { type: "number", min: "0", inputmode: "numeric", value: state.cartaCantidadCocteles, oninput: function (e) { state.cartaCantidadCocteles = e.target.value; } })));
-      nodes.push(fieldWrap("¿Hay botellas FDC en carta?", true, segControl(["Si", "No"], state.cartaBotellasSiNo, function (v) { state.cartaBotellasSiNo = v; })));
-      if (state.cartaBotellasSiNo === "Si") {
-        nodes.push(fieldWrap("¿Cuáles?", true, chipMultiSelect(skuNames(), state.cartaListaBotellas, function (sku) {
-          const i = state.cartaListaBotellas.indexOf(sku);
-          if (i === -1) state.cartaListaBotellas.push(sku); else state.cartaListaBotellas.splice(i, 1);
-        })));
-      }
-      nodes.push(fieldWrap("¿Activación en menú? (Logo, una botella o Flor Ginger)", true, segControl(["Si", "No"], state.cartaActivacionMenu, function (v) { state.cartaActivacionMenu = v; })));
-    } else if (state.canal === "Off") {
-      nodes.push(fieldWrap("¿Hay comunicación de combos FDC?", true, segControl(["Si", "No"], state.cartaCombosOff, function (v) { state.cartaCombosOff = v; })));
+    nodes.push(fieldWrap("¿Hay cócteles FDC en carta?", true, segControl(["Si", "No"], state.cartaCocteles, function (v) { state.cartaCocteles = v; })));
+    if (state.cartaCocteles === "Si") nodes.push(fieldWrap("¿Cuántos?", true, el("input", { type: "number", min: "0", inputmode: "numeric", value: state.cartaCantidadCocteles, oninput: function (e) { state.cartaCantidadCocteles = e.target.value; } })));
+    nodes.push(fieldWrap("¿Hay botellas FDC en carta?", true, segControl(["Si", "No"], state.cartaBotellasSiNo, function (v) { state.cartaBotellasSiNo = v; })));
+    if (state.cartaBotellasSiNo === "Si") {
+      nodes.push(fieldWrap("¿Cuáles?", true, chipMultiSelect(skuNames(), state.cartaListaBotellas, function (sku) {
+        const i = state.cartaListaBotellas.indexOf(sku);
+        if (i === -1) state.cartaListaBotellas.push(sku); else state.cartaListaBotellas.splice(i, 1);
+      })));
     }
+    nodes.push(fieldWrap("¿Activación en menú? (Logo, una botella o Flor Ginger)", true, segControl(["Si", "No"], state.cartaActivacionMenu, function (v) { state.cartaActivacionMenu = v; })));
     return nodes;
   }
   function viewFotoCarta() {
@@ -855,7 +848,7 @@
           botellas_si_no: state.canal === "On" ? state.cartaBotellasSiNo : "No aplica",
           lista_botellas: state.canal === "On" ? state.cartaListaBotellas : [],
           activacion_menu: state.canal === "On" ? state.cartaActivacionMenu : "No aplica",
-          combos_off: state.canal === "Off" ? state.cartaCombosOff : "No aplica"
+          combos_off: "No aplica"
         },
         foto_carta: state.fotoCarta,
         precios: state.precios,
