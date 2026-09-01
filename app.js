@@ -886,19 +886,84 @@
   }
 
   // ---------------------------------------------------------------
-  // Resumen — render
+  // Resumen — render (tabla compacta + gráfico de tendencia por ejecutivo)
   // ---------------------------------------------------------------
-  function resumenCard(entry, bucketKey) {
-    const b = entry[bucketKey];
-    return el("div", { class: "resumen-card" }, [
-      el("div", { class: "resumen-card-header" }, [el("strong", {}, [entry.ejecutivo]), el("span", { class: "resumen-total" }, [String(b.total)])]),
-      el("div", { class: "resumen-stats" }, [
-        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.cartera)]), el("span", { class: "resumen-stat-label" }, ["Cartera"])]),
-        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.activacion)]), el("span", { class: "resumen-stat-label" }, ["Activación"])]),
-        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.matinal)]), el("span", { class: "resumen-stat-label" }, ["Matinal"])]),
-        el("div", { class: "resumen-stat" }, [el("span", { class: "resumen-stat-value" }, [String(b.prospeccion)]), el("span", { class: "resumen-stat-label" }, ["Prospección"])])
-      ])
+  const CHART_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
+  let chartInstance = null;
+  let chartJsLoadPromise = null;
+  function loadChartJs() {
+    if (window.Chart) return Promise.resolve();
+    if (chartJsLoadPromise) return chartJsLoadPromise;
+    chartJsLoadPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
+      script.onload = function () { resolve(); };
+      script.onerror = function () { chartJsLoadPromise = null; reject(new Error("No se pudo cargar el gráfico (revisa tu conexión).")); };
+      document.head.appendChild(script);
+    });
+    return chartJsLoadPromise;
+  }
+
+  function resumenTable(entries, bucketKey) {
+    const table = el("table", { class: "resumen-table" }, [
+      el("thead", {}, [el("tr", {}, [
+        el("th", {}, ["Ejecutivo"]), el("th", {}, ["Cart"]), el("th", {}, ["Act"]), el("th", {}, ["Mat"]), el("th", {}, ["Pros"]), el("th", { class: "num" }, ["Total"])
+      ])]),
+      el("tbody", {}, entries.map(function (entry) {
+        const b = entry[bucketKey];
+        return el("tr", {}, [
+          el("td", {}, [entry.ejecutivo]),
+          el("td", { class: "num" }, [String(b.cartera)]),
+          el("td", { class: "num" }, [String(b.activacion)]),
+          el("td", { class: "num" }, [String(b.matinal)]),
+          el("td", { class: "num" }, [String(b.prospeccion)]),
+          el("td", { class: "num total" }, [String(b.total)])
+        ]);
+      }))
     ]);
+    return el("div", { style: "overflow-x:auto" }, [table]);
+  }
+
+  function renderTrendChart(container, serieMensual) {
+    if (!serieMensual || !serieMensual.ejecutivos.length) return;
+    const legend = el("div", { style: "display:flex; flex-wrap:wrap; gap:10px; margin:10px 0; font-size:11px; color:var(--tint-75)" }, []);
+    serieMensual.ejecutivos.forEach(function (s, i) {
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      legend.appendChild(el("span", { style: "display:flex; align-items:center; gap:4px" }, [
+        el("span", { style: "width:8px; height:8px; border-radius:2px; background:" + color + "; display:inline-block" }, []),
+        s.ejecutivo
+      ]));
+    });
+    const wrap = el("div", { style: "position:relative; width:100%; height:220px" }, []);
+    const canvas = el("canvas", { role: "img", "aria-label": "Cuestionarios por día en el mes, una línea por ejecutivo" }, []);
+    wrap.appendChild(canvas);
+    container.appendChild(legend);
+    container.appendChild(wrap);
+
+    loadChartJs().then(function () {
+      if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+      chartInstance = new window.Chart(canvas, {
+        type: "line",
+        data: {
+          labels: serieMensual.dias,
+          datasets: serieMensual.ejecutivos.map(function (s, i) {
+            const color = CHART_COLORS[i % CHART_COLORS.length];
+            return { label: s.ejecutivo, data: s.valores, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.25 };
+          })
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { ticks: { autoSkip: true, maxTicksLimit: 8, color: "#BFCFD3" }, grid: { display: false }, title: { display: true, text: "Día del mes", color: "#BFCFD3", font: { size: 11 } } },
+            y: { beginAtZero: true, ticks: { color: "#BFCFD3", precision: 0 }, grid: { color: "#295C69" }, title: { display: true, text: "Cuestionarios", color: "#BFCFD3", font: { size: 11 } } }
+          }
+        }
+      });
+    }).catch(function (err) {
+      container.appendChild(el("p", { class: "step-hint" }, [err.message]));
+    });
   }
 
   function renderResumen() {
@@ -922,6 +987,7 @@
 
     if (state.resumenError) body.appendChild(el("div", { class: "error-banner", style: "margin-top:16px" }, [state.resumenError]));
 
+    let trendContainer = null;
     if (state.resumenLoading) {
       body.appendChild(el("p", { class: "step-hint", style: "margin-top:16px" }, [el("span", { class: "spinner" }, []), " Cargando…"]));
     } else if (state.resumenData) {
@@ -931,9 +997,10 @@
         el("span", { class: "k" }, ["Total " + (state.resumenTab === "dia" ? state.resumenData.day : state.resumenData.month)]),
         el("span", { class: "v" }, [String(totalGeneral)])
       ]));
-      const list = el("div", { style: "display:flex; flex-direction:column; gap:10px; margin-top:14px" }, []);
-      state.resumenData.ejecutivos.forEach(function (entry) { list.appendChild(resumenCard(entry, bucketKey)); });
-      body.appendChild(list);
+      body.appendChild(el("div", { style: "margin-top:14px" }, [resumenTable(state.resumenData.ejecutivos, bucketKey)]));
+      body.appendChild(el("p", { class: "step-hint", style: "margin:20px 0 0" }, ["Tendencia del mes (" + state.resumenMonth + ") — cuestionarios por día, por ejecutivo"]));
+      trendContainer = el("div", {}, []);
+      body.appendChild(trendContainer);
     }
 
     const footer = el("div", { class: "app-footer" }, [
@@ -943,6 +1010,7 @@
     root.appendChild(header);
     root.appendChild(body);
     root.appendChild(footer);
+    if (trendContainer) renderTrendChart(trendContainer, state.resumenData.serieMensual);
   }
 
   // ---------------------------------------------------------------

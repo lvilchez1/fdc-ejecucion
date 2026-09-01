@@ -412,48 +412,22 @@ input:focus, select:focus, button:focus-visible {
 }
 
 /* ---------- Resumen ---------- */
-.resumen-card {
-  border: 1.5px solid var(--tint-16);
-  background: var(--tint-08);
-  border-radius: var(--radius);
-  padding: 14px;
+.resumen-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
 }
-.resumen-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  font-size: 15px;
+.resumen-table th {
+  text-align: left;
+  padding: 8px 6px;
+  font-weight: 700;
+  color: var(--tint-75);
+  border-bottom: 1.5px solid var(--tint-16);
 }
-.resumen-total {
-  background: var(--white);
-  color: var(--dark);
-  font-weight: 800;
-  border-radius: 999px;
-  min-width: 30px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  font-size: 14px;
+.resumen-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--tint-16);
 }
-.resumen-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-.resumen-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.04);
-}
-.resumen-stat-value { font-size: 18px; font-weight: 800; }
-.resumen-stat-label { font-size: 10.5px; color: var(--tint-75); text-align: center; }
-@media (max-width: 360px) {
-  .resumen-stats { grid-template-columns: repeat(2, 1fr); }
-}
+.resumen-table th.num, .resumen-table td.num { text-align: center; }
+.resumen-table td.total { font-weight: 800; color: var(--white); }
+.resumen-table tbody tr:nth-child(even) { background: var(--tint-08); }
