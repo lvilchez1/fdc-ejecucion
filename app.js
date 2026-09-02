@@ -71,6 +71,8 @@
     _gpsRequested: false,
 
     ejecutivo: "",
+    localidad: "",
+    ejecutivosDetalle: [], // [{nombre, region, localidades}] — para poblar Localidad y filtrar Codistribuidor
     rutina: "",
     canal: "",
     cliente: "",
@@ -97,7 +99,8 @@
     fotoMatinal: null,
 
     esClienteNuevo: false,
-    prospeccionCodigo: "", prospeccionRazonSocial: "",
+    prospeccionCodigo: "", prospeccionRazonSocial: "", prospeccionRazonComercial: "",
+    codistribuidorAtiende: "",
     resultado: "", compraSkus: [], compraCajas: {},
     seguimientoCajas: "", seguimientoMarca: "",
     fotoCheckout: null,
@@ -179,6 +182,7 @@
         if (Array.isArray(data.skus) && data.skus.length) state.skus = normalizeSkus(data.skus);
         if (Array.isArray(data.clientes)) state.clientes = data.clientes;
         if (Array.isArray(data.ejecutivos)) state.ejecutivos = data.ejecutivos;
+        if (Array.isArray(data.ejecutivosDetalle)) state.ejecutivosDetalle = data.ejecutivosDetalle;
         if (Array.isArray(data.codistribuidores)) state.codistribuidores = data.codistribuidores;
       }
     } catch (e) { console.warn("No se pudo cargar la configuración remota:", e.message); }
@@ -213,16 +217,21 @@
   }
   function regiones() {
     const seen = [];
-    state.codistribuidores.forEach(function (c) { if (seen.indexOf(c.region) === -1) seen.push(c.region); });
+    state.codistribuidores.forEach(function (c) { if (c.ejecutivo === state.ejecutivo && seen.indexOf(c.region) === -1) seen.push(c.region); });
     return seen;
   }
   function codistribuidoresEnRegion(region) {
     const seen = [];
-    state.codistribuidores.forEach(function (c) { if (c.region === region && seen.indexOf(c.codistribuidor) === -1) seen.push(c.codistribuidor); });
+    state.codistribuidores.forEach(function (c) { if (c.region === region && c.ejecutivo === state.ejecutivo && seen.indexOf(c.codistribuidor) === -1) seen.push(c.codistribuidor); });
+    return seen;
+  }
+  function codistribuidoresDelEjecutivo() {
+    const seen = [];
+    state.codistribuidores.forEach(function (c) { if (c.ejecutivo === state.ejecutivo && seen.indexOf(c.codistribuidor) === -1) seen.push(c.codistribuidor); });
     return seen;
   }
   function localidadesDe(region, codistribuidor) {
-    const rec = state.codistribuidores.find(function (c) { return c.region === region && c.codistribuidor === codistribuidor; });
+    const rec = state.codistribuidores.find(function (c) { return c.region === region && c.codistribuidor === codistribuidor && c.ejecutivo === state.ejecutivo; });
     return rec ? rec.localidades : [];
   }
 
@@ -326,7 +335,15 @@
     return steps;
   }
 
-  function clientesForCanal(canal) { return state.clientes.filter(function (c) { return c.canal === canal && c.ejecutivo === state.ejecutivo; }); }
+  function clientesForCanal(canal) { return state.clientes.filter(function (c) { return c.canal === canal && c.ejecutivo === state.ejecutivo && c.localidad === state.localidad; }); }
+  function localidadesDelEjecutivo(nombre) {
+    const ej = state.ejecutivosDetalle.find(function (e) { return e.nombre === nombre; });
+    return ej ? ej.localidades : [];
+  }
+  function regionDelEjecutivo(nombre) {
+    const ej = state.ejecutivosDetalle.find(function (e) { return e.nombre === nombre; });
+    return ej ? ej.region : "";
+  }
   function setStep(idx) { state.stepIndex = idx; render(); root.scrollTop = 0; window.scrollTo(0, 0); }
   function goNext() {
     const steps = buildSteps();
@@ -342,6 +359,7 @@
     switch (stepName) {
       case "identificacion":
         if (!state.ejecutivo) errs.push("Selecciona qué ejecutivo está haciendo la visita.");
+        if (!state.localidad) errs.push("Selecciona la localidad en la que te encuentras.");
         if (!state.rutina) errs.push("Selecciona qué tipo de rutina vas a registrar.");
         else if (state.rutina === "cartera") {
           if (!state.canal) errs.push("Selecciona el canal (On / Off).");
@@ -354,8 +372,9 @@
           if (!state.matinalLocalidad) errs.push("Selecciona la localidad.");
         } else if (state.rutina === "prospeccion") {
           if (!state.esClienteNuevo && !state.prospeccionCodigo) errs.push("Ingresa el código de cliente, o marca 'Es cliente nuevo'.");
-          if (!state.prospeccionRazonSocial) errs.push("Ingresa la razón comercial.");
+          if (!state.prospeccionRazonSocial && !state.prospeccionRazonComercial) errs.push("Ingresa al menos una: razón social o razón comercial.");
           if (!state.canal) errs.push("Selecciona el canal (On / Off).");
+          if (!state.codistribuidorAtiende) errs.push("Indica qué codistribuidor lo atiende (o marca 'No es atendido').");
         }
         break;
       case "portafolio":
@@ -579,24 +598,41 @@
 
     nodes.push(fieldWrap("Ejecutivo", true,
       state.ejecutivos.length
-        ? el("select", { onchange: function (e) { state.ejecutivo = e.target.value; state.cliente = ""; render(); } },
+        ? el("select", { onchange: function (e) { state.ejecutivo = e.target.value; state.localidad = ""; state.cliente = ""; render(); } },
             [el("option", { value: "" }, ["Selecciona…"])].concat(state.ejecutivos.map(function (n) {
               const o = el("option", { value: n }, [n]);
               if (n === state.ejecutivo) o.setAttribute("selected", "true");
               return o;
             })))
-        : el("input", { type: "text", placeholder: "Escribe tu nombre", value: state.ejecutivo, oninput: function (e) { state.ejecutivo = e.target.value; } })
+        : el("input", { type: "text", placeholder: "Escribe tu nombre", value: state.ejecutivo, oninput: function (e) { state.ejecutivo = e.target.value; }, onblur: function () { render(); } })
     ));
 
-    nodes.push(fieldWrap("Tipo de rutina", true, optionCards([
-      { value: "cartera", label: RUTINA_LABELS.cartera },
-      { value: "activacion", label: RUTINA_LABELS.activacion },
-      { value: "matinal", label: RUTINA_LABELS.matinal },
-      { value: "prospeccion", label: RUTINA_LABELS.prospeccion }
-    ], state.rutina, function (v) {
-      if (v !== state.rutina) { state.canal = ""; state.cliente = ""; }
-      state.rutina = v;
-    })));
+    if (state.ejecutivo) {
+      const localidadesEj = localidadesDelEjecutivo(state.ejecutivo);
+      nodes.push(fieldWrap("Localidad", true,
+        localidadesEj.length
+          ? el("select", { onchange: function (e) { state.localidad = e.target.value; state.cliente = ""; render(); } },
+              [el("option", { value: "" }, ["Selecciona…"])].concat(localidadesEj.map(function (l) {
+                const o = el("option", { value: l }, [l]);
+                if (l === state.localidad) o.setAttribute("selected", "true");
+                return o;
+              })))
+          : el("input", { type: "text", placeholder: "Escribe tu localidad", value: state.localidad, oninput: function (e) { state.localidad = e.target.value; }, onblur: function () { render(); } }),
+        !localidadesEj.length ? "No hay localidades cargadas para este ejecutivo todavía; escribe la localidad manualmente." : null
+      ));
+    }
+
+    if (state.ejecutivo && state.localidad) {
+      nodes.push(fieldWrap("Tipo de rutina", true, optionCards([
+        { value: "cartera", label: RUTINA_LABELS.cartera },
+        { value: "activacion", label: RUTINA_LABELS.activacion },
+        { value: "matinal", label: RUTINA_LABELS.matinal },
+        { value: "prospeccion", label: RUTINA_LABELS.prospeccion }
+      ], state.rutina, function (v) {
+        if (v !== state.rutina) { state.canal = ""; state.cliente = ""; }
+        state.rutina = v;
+      })));
+    }
 
     if (state.rutina === "cartera") {
       nodes.push(fieldWrap("Canal", true, segControl(["On", "Off"], state.canal, function (v) { if (v !== state.canal) state.cliente = ""; state.canal = v; })));
@@ -605,7 +641,7 @@
         nodes.push(fieldWrap("Razón comercial", true,
           names.length ? searchableSelect(names, state.cliente, "Buscar cliente…", function (name) { state.cliente = name; })
             : el("input", { type: "text", placeholder: "Escribe la razón comercial", value: state.cliente, oninput: function (e) { state.cliente = e.target.value; } }),
-          !names.length ? "No hay clientes cargados para este canal todavía; escribe el nombre manualmente." : null
+          !names.length ? "No hay clientes cargados para este canal/localidad todavía; escribe el nombre manualmente." : null
         ));
       }
     } else if (state.rutina === "activacion") {
@@ -651,8 +687,15 @@
       if (!state.esClienteNuevo) {
         nodes.push(fieldWrap("Código de cliente", true, el("input", { type: "text", placeholder: "Código", value: state.prospeccionCodigo, oninput: function (e) { state.prospeccionCodigo = e.target.value; } })));
       }
-      nodes.push(fieldWrap("Razón comercial", true, el("input", { type: "text", placeholder: "Razón comercial", value: state.prospeccionRazonSocial, oninput: function (e) { state.prospeccionRazonSocial = e.target.value; } })));
+      nodes.push(fieldWrap("Razón social", false, el("input", { type: "text", placeholder: "Razón social", value: state.prospeccionRazonSocial, oninput: function (e) { state.prospeccionRazonSocial = e.target.value; } })));
+      nodes.push(fieldWrap("Razón comercial", false, el("input", { type: "text", placeholder: "Razón comercial", value: state.prospeccionRazonComercial, oninput: function (e) { state.prospeccionRazonComercial = e.target.value; } }), "Completa al menos una de las dos (puede ser solo una, o ambas)."));
       nodes.push(fieldWrap("Canal", true, segControl(["On", "Off"], state.canal, function (v) { state.canal = v; })));
+      const codisDelEjecutivo = codistribuidoresDelEjecutivo();
+      const codisOpciones = ["No es atendido"].concat(codisDelEjecutivo);
+      nodes.push(fieldWrap("¿Qué codistribuidor lo atiende?", true,
+        searchableSelect(codisOpciones, state.codistribuidorAtiende, "Buscar codistribuidor…", function (name) { state.codistribuidorAtiende = name; }),
+        !codisDelEjecutivo.length ? "No hay codistribuidores asignados a este ejecutivo todavía; puedes escribir 'No es atendido' si aplica." : null
+      ));
     }
     return nodes;
   }
@@ -786,18 +829,19 @@
   function entidadVisitada() {
     if (state.rutina === "cartera" || state.rutina === "activacion") return state.cliente;
     if (state.rutina === "matinal") return state.matinalCodistribuidor + " (" + state.matinalLocalidad + ")";
-    if (state.rutina === "prospeccion") return state.prospeccionRazonSocial;
+    if (state.rutina === "prospeccion") return state.prospeccionRazonComercial || state.prospeccionRazonSocial;
     return "";
   }
   function viewRevision() {
     if (!state.gpsEnvio && !state._gpsRequested) { state._gpsRequested = true; requestFinalGps(); }
     const rows = [
       ["Ejecutivo", state.ejecutivo],
+      ["Localidad", state.localidad],
       ["Rutina", RUTINA_LABELS[state.rutina] || state.rutina],
       ["Entidad visitada", entidadVisitada()],
       ["Ubicación de envío", state.gpsEnvio ? (fmtCoord(state.gpsEnvio.lat) + ", " + fmtCoord(state.gpsEnvio.lng) + " (±" + Math.round(state.gpsEnvio.acc) + " m)") : "Obteniendo…"]
     ];
-    if (state.rutina === "cartera" || state.rutina === "prospeccion") rows.splice(2, 0, ["Canal", state.canal]);
+    if (state.rutina === "cartera" || state.rutina === "prospeccion") rows.splice(3, 0, ["Canal", state.canal]);
     const nodes = [el("h2", { class: "step-title" }, ["Revisión y envío"]), el("p", { class: "step-hint" }, ["Verifica los datos antes de enviar."])];
     rows.forEach(function (r) { nodes.push(el("div", { class: "summary-row" }, [el("span", { class: "k" }, [r[0]]), el("span", { class: "v" }, [String(r[1])])])); });
     if (!state.gpsEnvio) nodes.push(el("button", { class: "camera-btn", type: "button", style: "margin-top:14px", onclick: function () { requestFinalGps(); } }, ["Reintentar ubicación"]));
@@ -832,7 +876,7 @@
   // Envío
   // ---------------------------------------------------------------
   function buildPayload() {
-    const base = { token: CFG.SHARED_TOKEN, ejecutivo: state.ejecutivo, rutina: state.rutina, gps_envio: state.gpsEnvio, submitted_at_local: new Date().toISOString(), app_version: "4.0" };
+    const base = { token: CFG.SHARED_TOKEN, ejecutivo: state.ejecutivo, localidad: state.localidad, rutina: state.rutina, gps_envio: state.gpsEnvio, submitted_at_local: new Date().toISOString(), app_version: "7.0" };
     if (state.rutina === "cartera") {
       return Object.assign(base, {
         canal: state.canal, cliente: state.cliente,
@@ -874,7 +918,9 @@
         es_cliente_nuevo: state.esClienteNuevo,
         prospeccion_codigo: state.esClienteNuevo ? "" : state.prospeccionCodigo,
         prospeccion_razon_social: state.prospeccionRazonSocial,
+        prospeccion_razon_comercial: state.prospeccionRazonComercial,
         canal: state.canal,
+        codistribuidor_atiende: state.codistribuidorAtiende,
         resultado: state.resultado,
         compra_detalle: state.resultado === "Compra" ? state.compraSkus.map(function (sku) { return { sku: sku, cajas: state.compraCajas[sku] }; }) : [],
         seguimiento_cajas: state.resultado === "Seguimiento" ? state.seguimientoCajas : "",
@@ -924,10 +970,11 @@
 
   function resetForNext() {
     const keepEjecutivo = state.ejecutivo;
+    const keepLocalidad = state.localidad;
     Object.assign(state, {
       view: "form",
       stepIndex: 0, submitting: false, submitError: "", _gpsRequested: false,
-      ejecutivo: keepEjecutivo, rutina: "", canal: "", cliente: "",
+      ejecutivo: keepEjecutivo, localidad: keepLocalidad, rutina: "", canal: "", cliente: "",
       portafolio: [], visibilidad: [], fotoVisibilidad: null,
       luminosoFDC: "", fotoLuminoso: null, implementacionFDC: "", fotoImplementacion: null,
       cartaCocteles: "", cartaCantidadCocteles: "", cartaBotellasSiNo: "",
@@ -935,7 +982,8 @@
       precios: freshPrecios(), materiales: freshMateriales(), fotoMateriales: null, capacitacion: "",
       fotosRitual: [], fotosConsumo: [], fotosSetupActivos: [],
       matinalRegion: "", matinalCodistribuidor: "", matinalLocalidad: "", fotoMatinal: null,
-      esClienteNuevo: false, prospeccionCodigo: "", prospeccionRazonSocial: "", resultado: "",
+      esClienteNuevo: false, prospeccionCodigo: "", prospeccionRazonSocial: "", prospeccionRazonComercial: "",
+      codistribuidorAtiende: "", resultado: "",
       compraSkus: [], compraCajas: {}, seguimientoCajas: "", seguimientoMarca: "", fotoCheckout: null,
       gpsEnvio: null
     });
@@ -1073,7 +1121,8 @@
         (c.vendedor ? "<br>Vendedor: " + escapeHtml(c.vendedor) : "") +
         (c.volumenPromedio ? "<br>Volumen prom.: " + escapeHtml(c.volumenPromedio) : "") +
         '<br><a href="' + dirUrl + '" target="_blank" rel="noopener">Cómo llegar →</a>';
-      window.L.marker([c.lat, c.lng]).addTo(map).bindPopup(popupHtml);
+      window.L.circleMarker([c.lat, c.lng], { radius: 8, color: "#003D4D", weight: 2, fillColor: "#FFFFFF", fillOpacity: 1 })
+        .addTo(map).bindPopup(popupHtml);
     });
 
     if (userPos) {
