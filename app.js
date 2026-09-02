@@ -72,7 +72,7 @@
 
     ejecutivo: "",
     localidad: "",
-    ejecutivosDetalle: [], // [{nombre, region, localidades}] — para poblar Localidad y filtrar Codistribuidor
+    ejecutivosDetalle: [], // [{nombre, region, metaCartera, ...}] — se recibe pero ya no se usa para Localidad (ver Codistribuidores)
     rutina: "",
     canal: "",
     cliente: "",
@@ -336,13 +336,14 @@
   }
 
   function clientesForCanal(canal) { return state.clientes.filter(function (c) { return c.canal === canal && c.ejecutivo === state.ejecutivo && c.localidad === state.localidad; }); }
+  // Las localidades de un ejecutivo salen de la hoja Codistribuidores
+  // (unión de las localidades de todas sus filas asignadas), no de Ejecutivos.
   function localidadesDelEjecutivo(nombre) {
-    const ej = state.ejecutivosDetalle.find(function (e) { return e.nombre === nombre; });
-    return ej ? ej.localidades : [];
-  }
-  function regionDelEjecutivo(nombre) {
-    const ej = state.ejecutivosDetalle.find(function (e) { return e.nombre === nombre; });
-    return ej ? ej.region : "";
+    const seen = [];
+    state.codistribuidores.forEach(function (c) {
+      if (c.ejecutivo === nombre) c.localidades.forEach(function (l) { if (seen.indexOf(l) === -1) seen.push(l); });
+    });
+    return seen;
   }
   function setStep(idx) { state.stepIndex = idx; render(); root.scrollTop = 0; window.scrollTo(0, 0); }
   function goNext() {
@@ -618,7 +619,7 @@
                 return o;
               })))
           : el("input", { type: "text", placeholder: "Escribe tu localidad", value: state.localidad, oninput: function (e) { state.localidad = e.target.value; }, onblur: function () { render(); } }),
-        !localidadesEj.length ? "No hay localidades cargadas para este ejecutivo todavía; escribe la localidad manualmente." : null
+        !localidadesEj.length ? "Este ejecutivo no tiene codistribuidores asignados todavía en la hoja Codistribuidores; escribe la localidad manualmente." : null
       ));
     }
 
