@@ -5,7 +5,10 @@
   para no mostrar nunca listas de clientes/SKUs desactualizadas ni fingir
   que un envío se guardó cuando no hay conexión real.
 */
-const CACHE_NAME = "fdc-ejecucion-shell-v1";
+const CACHE_NAME = "fdc-ejecucion-shell-v2"; // ⚠️ Sube este número (v3, v4...) cada vez que subas
+                                              // cambios a index.html/app.js/styles.css/config.js —
+                                              // si no, los celulares que ya tenían la app instalada
+                                              // se quedan atrapados sirviendo la versión vieja en caché.
 const SHELL_FILES = [
   "./index.html",
   "./styles.css",
