@@ -62,6 +62,19 @@
   // ---------------------------------------------------------------
   // Carga de datos
   // ---------------------------------------------------------------
+  async function fetchJson(url, label) {
+    const res = await fetch(url);
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      const preview = text.slice(0, 120).replace(/\s+/g, " ");
+      throw new Error("La respuesta de " + label + " no fue JSON (posible error de Apps Script): " + preview);
+    }
+    return data;
+  }
+
   async function cargarTodo() {
     if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.indexOf("PEGA_AQUI") === 0) {
       state.error = "El backend aún no está configurado (config.js).";
@@ -71,12 +84,11 @@
     }
     try {
       const base = CFG.APPS_SCRIPT_URL + "?token=" + encodeURIComponent(CFG.SHARED_TOKEN);
-      const [resDash, resConfig] = await Promise.all([
-        fetch(base + "&action=dashboard"),
-        fetch(base)
-      ]);
-      const dataDash = await resDash.json();
-      const dataConfig = await resConfig.json();
+      // Una llamada primero, luego la otra: 2 fetch simultáneos al mismo
+      // despliegue de Apps Script a veces disparan un error de "demasiadas
+      // peticiones" que llega como HTML en vez de JSON.
+      const dataDash = await fetchJson(base + "&action=dashboard", "el dashboard");
+      const dataConfig = await fetchJson(base, "la configuración (clientes)");
       if (!dataDash || !dataDash.ok) throw new Error((dataDash && dataDash.error) || "Error cargando el dashboard.");
       if (!dataConfig || !dataConfig.ok) throw new Error((dataConfig && dataConfig.error) || "Error cargando clientes.");
 
