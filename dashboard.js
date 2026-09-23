@@ -13,7 +13,7 @@
     error: "",
     fecha: "",
     ranking: [],
-    cartera: [], prospeccion: [], matinal: [], activacion: [],
+    cartera: [], prospeccion: [], matinal: [], activacion: [], moderno: [],
     clientes: [],
     visitadosCarteraSet: null, // Set de "ejecutivo|cliente"
     filtroEjecutivo: "Todos",
@@ -98,6 +98,7 @@
       state.prospeccion = dataDash.prospeccion;
       state.matinal = dataDash.matinal;
       state.activacion = dataDash.activacion;
+      state.moderno = dataDash.moderno;
       state.clientes = dataConfig.clientes || [];
 
       const visitados = new Set();
@@ -116,7 +117,7 @@
   function renderRanking() {
     const table = el("table", { class: "dash-table" }, [
       el("thead", {}, [el("tr", {}, [
-        el("th", {}, ["Ejecutivo"]), el("th", {}, ["Cart"]), el("th", {}, ["Pros"]), el("th", {}, ["Mat"]), el("th", {}, ["Act"]), el("th", {}, ["Promedio"])
+        el("th", {}, ["Ejecutivo"]), el("th", {}, ["Cart"]), el("th", {}, ["Pros"]), el("th", {}, ["Mat"]), el("th", {}, ["Act"]), el("th", {}, ["Mod"]), el("th", {}, ["Promedio"])
       ])]),
       el("tbody", {}, state.ranking.map(function (r) {
         return el("tr", {}, [
@@ -125,6 +126,7 @@
           el("td", {}, [pillPct(r.prospeccion)]),
           el("td", {}, [pillPct(r.matinal)]),
           el("td", {}, [pillPct(r.activacion)]),
+          el("td", {}, [pillPct(r.moderno)]),
           el("td", { style: "font-weight:800" }, [r.promedio === null ? "—" : r.promedio + "%"])
         ]);
       }))
@@ -396,6 +398,7 @@
     root.appendChild(renderPacingDiario("Prospección", state.prospeccion));
     root.appendChild(renderSoloMes("Matinal / Vespertina", state.matinal));
     root.appendChild(renderPacingSemanal("Activación On Trade", state.activacion));
+    root.appendChild(renderPacingDiario("Moderno", state.moderno));
     root.appendChild(renderCobertura());
   }
 

@@ -14,7 +14,8 @@
     cartera: "Visita cliente cartera",
     activacion: "Activación On Trade",
     matinal: "Matinal / Vespertina",
-    prospeccion: "Prospección"
+    prospeccion: "Prospección",
+    moderno: "Visita Moderno"
   };
 
   const PRICE_FIELDS = [
@@ -33,16 +34,35 @@
     { key: "jw_gold", label: "PVP JW Gold", channels: ["On", "Off"] }
   ];
 
+  const PRICE_FIELDS_MODERNO = [
+    { key: "fdc_4_750", label: "PVP FDC 4 750" },
+    { key: "fdc_4_1750", label: "PVP FDC 4 1750" },
+    { key: "fdc_es_4_1750", label: "PVP FDC ES 4 1750" },
+    { key: "fdc_12_750", label: "PVP FDC 12 750" },
+    { key: "fdc_18_750", label: "PVP FDC 18 750" },
+    { key: "bacardi_oro", label: "PVP Bacardi Oro" },
+    { key: "diplomatico_mantuano", label: "PVP Diplomático Mantuano" },
+    { key: "garrafa_blanco_bacardi", label: "PVP Garrafa Blanco Bacardi" },
+    { key: "botran_12", label: "PVP Botran 12" },
+    { key: "barcelo_anejo_1750", label: "PVP Barcelo añejo 1750" },
+    { key: "barcelo_gran_anejo_1750", label: "PVP Barcelo Gran añejo 1750" }
+  ];
+
   function freshPrecios() {
     const o = {};
     PRICE_FIELDS.forEach(function (f) { o[f.key] = { value: "", na: false }; });
+    return o;
+  }
+  function freshPreciosModerno() {
+    const o = {};
+    PRICE_FIELDS_MODERNO.forEach(function (f) { o[f.key] = { value: "", na: false }; });
     return o;
   }
   function freshMateriales() {
     return { vasos_pavonados: "", hieleras: "", vasos_vidrio: "", barmats: "", banner_promos: "" };
   }
   function normalizeSkus(list) {
-    return (list || []).map(function (s) { return typeof s === "string" ? { sku: s, starOn: false, starOff: false } : s; });
+    return (list || []).map(function (s) { return typeof s === "string" ? { sku: s, starOn: false, starOff: false, starModerno: false } : s; });
   }
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
   function todayDateStr() {
@@ -104,6 +124,14 @@
     resultado: "", compraSkus: [], compraCajas: {},
     seguimientoCajas: "", seguimientoMarca: "",
     fotoCheckout: null,
+
+    // --- canal Moderno ---
+    cadena: "", tienda: "",
+    modernoDisponibilidad: [], modernoFotoGondola: null,
+    modernoImplementacionFdc: "", modernoFotoImplementacionFdc: null,
+    modernoImplementacionCompetencia: "", modernoFotoImplementacionCompetencia: null,
+    modernoPrecios: freshPreciosModerno(),
+    modernoStock: [],
 
     gpsEnvio: null,
 
@@ -213,7 +241,9 @@
   function isStarred(sku, canal) {
     const s = state.skus.find(function (x) { return x.sku === sku; });
     if (!s) return false;
-    return canal === "Off" ? !!s.starOff : !!s.starOn;
+    if (canal === "Off") return !!s.starOff;
+    if (canal === "Moderno") return !!s.starModerno;
+    return !!s.starOn;
   }
   function regiones() {
     const seen = [];
@@ -330,6 +360,12 @@
       steps.push("foto_matinal");
     } else if (state.rutina === "prospeccion") {
       steps.push("resultado_prospeccion", "foto_checkout");
+    } else if (state.rutina === "moderno") {
+      steps.push("moderno_disponibilidad", "moderno_foto_gondola", "moderno_implementacion_fdc");
+      if (state.modernoImplementacionFdc === "Si") steps.push("moderno_foto_implementacion_fdc");
+      steps.push("moderno_implementacion_competencia");
+      if (state.modernoImplementacionCompetencia === "Si") steps.push("moderno_foto_implementacion_competencia");
+      steps.push("moderno_precios", "moderno_stock");
     }
     if (state.rutina) steps.push("revision");
     return steps;
@@ -376,6 +412,9 @@
           if (!state.prospeccionRazonSocial && !state.prospeccionRazonComercial) errs.push("Ingresa al menos una: razón social o razón comercial.");
           if (!state.canal) errs.push("Selecciona el canal (On / Off).");
           if (!state.codistribuidorAtiende) errs.push("Indica qué codistribuidor lo atiende (o marca 'No es atendido').");
+        } else if (state.rutina === "moderno") {
+          if (!state.cadena) errs.push("Selecciona la cadena.");
+          if (!state.tienda) errs.push("Selecciona la tienda.");
         }
         break;
       case "portafolio":
@@ -450,6 +489,21 @@
         break;
       case "foto_checkout":
         if (!state.fotoCheckout) errs.push("Toma la foto de check out.");
+        break;
+      case "moderno_foto_gondola":
+        if (!state.modernoFotoGondola) errs.push("Toma la foto de góndola.");
+        break;
+      case "moderno_implementacion_fdc":
+        if (!state.modernoImplementacionFdc) errs.push("Indica si tiene implementación FDC (Sí/No).");
+        break;
+      case "moderno_foto_implementacion_fdc":
+        if (!state.modernoFotoImplementacionFdc) errs.push("Toma la foto de la implementación FDC.");
+        break;
+      case "moderno_implementacion_competencia":
+        if (!state.modernoImplementacionCompetencia) errs.push("Indica si hay implementación de la competencia (Sí/No).");
+        break;
+      case "moderno_foto_implementacion_competencia":
+        if (!state.modernoFotoImplementacionCompetencia) errs.push("Toma la foto de la implementación de la competencia.");
         break;
       case "revision":
         if (!state.gpsEnvio) errs.push("Aún no se ha registrado la ubicación de envío. Espera unos segundos o toca «Reintentar ubicación».");
@@ -628,7 +682,8 @@
         { value: "cartera", label: RUTINA_LABELS.cartera },
         { value: "activacion", label: RUTINA_LABELS.activacion },
         { value: "matinal", label: RUTINA_LABELS.matinal },
-        { value: "prospeccion", label: RUTINA_LABELS.prospeccion }
+        { value: "prospeccion", label: RUTINA_LABELS.prospeccion },
+        { value: "moderno", label: RUTINA_LABELS.moderno }
       ], state.rutina, function (v) {
         if (v !== state.rutina) { state.canal = ""; state.cliente = ""; }
         state.rutina = v;
@@ -697,6 +752,29 @@
         searchableSelect(codisOpciones, state.codistribuidorAtiende, "Buscar codistribuidor…", function (name) { state.codistribuidorAtiende = name; }),
         !codisDelEjecutivo.length ? "No hay codistribuidores asignados a este ejecutivo todavía; puedes escribir 'No es atendido' si aplica." : null
       ));
+    } else if (state.rutina === "moderno") {
+      // Región fija en "Lima" (no se muestra al usuario, siempre es la misma).
+      const cadenasLima = codistribuidoresEnRegion("Lima");
+      nodes.push(fieldWrap("Cadena", true,
+        cadenasLima.length
+          ? searchableSelect(cadenasLima, state.cadena, "Buscar cadena…", function (v) { state.cadena = v; state.tienda = ""; })
+          : el("input", { type: "text", placeholder: "Escribe la cadena", value: state.cadena, oninput: function (e) { state.cadena = e.target.value; } }),
+        !cadenasLima.length ? "Este ejecutivo no tiene cadenas asignadas en la región Lima de la hoja Codistribuidores; escríbela manualmente." : null
+      ));
+      if (state.cadena) {
+        const tiendasCadena = localidadesDe("Lima", state.cadena);
+        nodes.push(fieldWrap("Tienda", true,
+          tiendasCadena.length
+            ? el("select", { onchange: function (e) { state.tienda = e.target.value; render(); } },
+                [el("option", { value: "" }, ["Selecciona…"])].concat(tiendasCadena.map(function (l) {
+                  const o = el("option", { value: l }, [l]);
+                  if (l === state.tienda) o.setAttribute("selected", "true");
+                  return o;
+                })))
+            : el("input", { type: "text", placeholder: "Escribe la tienda", value: state.tienda, oninput: function (e) { state.tienda = e.target.value; } }),
+          !tiendasCadena.length ? "Esta cadena no tiene tiendas/localidades cargadas; escríbela manualmente." : null
+        ));
+      }
     }
     return nodes;
   }
@@ -754,8 +832,8 @@
   function viewFotoCarta() {
     return [el("h2", { class: "step-title" }, ["Foto de carta"]), photoSlot(state.fotoCarta, "Carta", "environment", function (p) { state.fotoCarta = p; })];
   }
-  function priceField(f) {
-    const p = state.precios[f.key];
+  function priceField(f, preciosObj) {
+    const p = preciosObj[f.key];
     const input = el("input", { type: "number", min: "0", step: "0.01", inputmode: "decimal", placeholder: "0.00", class: "price-row-input", value: p.value, disabled: p.na ? "true" : null, oninput: function (e) { p.value = e.target.value; } });
     const naBtn = el("button", { type: "button", class: "price-row-na" + (p.na ? " active" : "") }, ["No aplica"]);
     naBtn.addEventListener("click", function () { p.na = !p.na; if (p.na) p.value = ""; render(); });
@@ -763,7 +841,7 @@
   }
   function viewPrecios() {
     const applicable = PRICE_FIELDS.filter(function (f) { return f.channels.indexOf(state.canal) !== -1; });
-    return [el("h2", { class: "step-title" }, ["Precio"]), el("p", { class: "step-hint" }, ["Ingresa el PVP vigente, o marca 'No aplica' si ese producto no se vende en este punto de venta."]), el("div", { class: "price-list" }, applicable.map(priceField))];
+    return [el("h2", { class: "step-title" }, ["Precio"]), el("p", { class: "step-hint" }, ["Ingresa el PVP vigente, o marca 'No aplica' si ese producto no se vende en este punto de venta."]), el("div", { class: "price-list" }, applicable.map(function (f) { return priceField(f, state.precios); }))];
   }
   function materialField(key, label) { return fieldWrap(label, true, segControl(["Si", "No", "No aplica"], state.materiales[key], function (v) { state.materiales[key] = v; })); }
   function viewMateriales() {
@@ -823,6 +901,45 @@
     return [el("h2", { class: "step-title" }, ["Foto de check out"]), photoSlot(state.fotoCheckout, "Check out", "environment", function (p) { state.fotoCheckout = p; })];
   }
 
+  function viewModernoDisponibilidad() {
+    return [
+      el("h2", { class: "step-title" }, ["Disponibilidad en góndola"]),
+      el("p", { class: "step-hint" }, ["Selecciona qué SKUs están exhibidos en góndola. ⭐ = producto foco en Moderno."]),
+      chipMultiSelect(skuNames(), state.modernoDisponibilidad, function (sku) {
+        const i = state.modernoDisponibilidad.indexOf(sku);
+        if (i === -1) state.modernoDisponibilidad.push(sku); else state.modernoDisponibilidad.splice(i, 1);
+      }, null, "Moderno")
+    ];
+  }
+  function viewModernoFotoGondola() {
+    return [el("h2", { class: "step-title" }, ["Foto de góndola"]), photoSlot(state.modernoFotoGondola, "Góndola", "environment", function (p) { state.modernoFotoGondola = p; })];
+  }
+  function viewModernoImplementacionFdc() {
+    return [el("h2", { class: "step-title" }, ["Implementación FDC"]), fieldWrap("¿Tiene implementación FDC?", true, segControl(["Si", "No"], state.modernoImplementacionFdc, function (v) { state.modernoImplementacionFdc = v; }))];
+  }
+  function viewModernoFotoImplementacionFdc() {
+    return [el("h2", { class: "step-title" }, ["Foto de implementación FDC"]), photoSlot(state.modernoFotoImplementacionFdc, "Implementación FDC", "environment", function (p) { state.modernoFotoImplementacionFdc = p; })];
+  }
+  function viewModernoImplementacionCompetencia() {
+    return [el("h2", { class: "step-title" }, ["Implementación de la competencia"]), fieldWrap("¿Hay implementación de la competencia?", true, segControl(["Si", "No"], state.modernoImplementacionCompetencia, function (v) { state.modernoImplementacionCompetencia = v; }))];
+  }
+  function viewModernoFotoImplementacionCompetencia() {
+    return [el("h2", { class: "step-title" }, ["Foto de implementación de la competencia"]), photoSlot(state.modernoFotoImplementacionCompetencia, "Implementación competencia", "environment", function (p) { state.modernoFotoImplementacionCompetencia = p; })];
+  }
+  function viewModernoPrecios() {
+    return [el("h2", { class: "step-title" }, ["Precios Moderno"]), el("p", { class: "step-hint" }, ["Ingresa el PVP vigente, o marca 'No aplica' si ese producto no se vende en esta tienda."]), el("div", { class: "price-list" }, PRICE_FIELDS_MODERNO.map(function (f) { return priceField(f, state.modernoPrecios); }))];
+  }
+  function viewModernoStock() {
+    return [
+      el("h2", { class: "step-title" }, ["Stock Moderno"]),
+      el("p", { class: "step-hint" }, ["Marca solo los SKUs que tengan quiebre o bajo stock. Si no hay ninguno, deja todo sin marcar y continúa."]),
+      chipMultiSelect(skuNames(), state.modernoStock, function (sku) {
+        const i = state.modernoStock.indexOf(sku);
+        if (i === -1) state.modernoStock.push(sku); else state.modernoStock.splice(i, 1);
+      })
+    ];
+  }
+
   function requestFinalGps() {
     getPosition(12000).then(function (pos) { state.gpsEnvio = pos; render(); })
       .catch(function () { state.gpsEnvio = null; state.submitError = "No se pudo obtener la ubicación. Activa el GPS y vuelve a intentar."; render(); });
@@ -831,6 +948,7 @@
     if (state.rutina === "cartera" || state.rutina === "activacion") return state.cliente;
     if (state.rutina === "matinal") return state.matinalCodistribuidor + " (" + state.matinalLocalidad + ")";
     if (state.rutina === "prospeccion") return state.prospeccionRazonComercial || state.prospeccionRazonSocial;
+    if (state.rutina === "moderno") return state.cadena + (state.tienda ? " — " + state.tienda : "");
     return "";
   }
   function viewRevision() {
@@ -859,6 +977,10 @@
     foto_ritual: viewFotoRitual, foto_consumo: viewFotoConsumo, foto_setup_activos: viewFotoSetupActivos,
     foto_matinal: viewFotoMatinal,
     resultado_prospeccion: viewResultadoProspeccion, foto_checkout: viewFotoCheckout,
+    moderno_disponibilidad: viewModernoDisponibilidad, moderno_foto_gondola: viewModernoFotoGondola,
+    moderno_implementacion_fdc: viewModernoImplementacionFdc, moderno_foto_implementacion_fdc: viewModernoFotoImplementacionFdc,
+    moderno_implementacion_competencia: viewModernoImplementacionCompetencia, moderno_foto_implementacion_competencia: viewModernoFotoImplementacionCompetencia,
+    moderno_precios: viewModernoPrecios, moderno_stock: viewModernoStock,
     revision: viewRevision
   };
   const STEP_LABELS = {
@@ -870,6 +992,11 @@
     precios: "Precios", materiales: "Materiales", foto_materiales: "Foto materiales", capacitacion: "Capacitación",
     foto_ritual: "Foto ritual", foto_consumo: "Foto consumo", foto_setup_activos: "Set up activos",
     foto_matinal: "Foto matinal", resultado_prospeccion: "Resultado", foto_checkout: "Foto check out",
+    moderno_cadena: "Cadena", moderno_tienda: "Tienda",
+    moderno_disponibilidad: "Disponibilidad", moderno_foto_gondola: "Foto góndola",
+    moderno_implementacion_fdc: "Implementación FDC", moderno_foto_implementacion_fdc: "Foto implementación FDC",
+    moderno_implementacion_competencia: "Implementación competencia", moderno_foto_implementacion_competencia: "Foto implementación competencia",
+    moderno_precios: "Precios Moderno", moderno_stock: "Stock Moderno",
     revision: "Revisión"
   };
 
@@ -929,6 +1056,19 @@
         foto_checkout: state.fotoCheckout
       });
     }
+    if (state.rutina === "moderno") {
+      return Object.assign(base, {
+        cadena: state.cadena, tienda: state.tienda, region: "Lima",
+        disponibilidad: state.modernoDisponibilidad,
+        foto_gondola: state.modernoFotoGondola,
+        implementacion_fdc_si_no: state.modernoImplementacionFdc,
+        foto_implementacion_fdc: state.modernoImplementacionFdc === "Si" ? state.modernoFotoImplementacionFdc : null,
+        implementacion_competencia_si_no: state.modernoImplementacionCompetencia,
+        foto_implementacion_competencia: state.modernoImplementacionCompetencia === "Si" ? state.modernoFotoImplementacionCompetencia : null,
+        precios_moderno: state.modernoPrecios,
+        stock_quiebre: state.modernoStock
+      });
+    }
     return base;
   }
 
@@ -986,6 +1126,11 @@
       esClienteNuevo: false, prospeccionCodigo: "", prospeccionRazonSocial: "", prospeccionRazonComercial: "",
       codistribuidorAtiende: "", resultado: "",
       compraSkus: [], compraCajas: {}, seguimientoCajas: "", seguimientoMarca: "", fotoCheckout: null,
+      cadena: "", tienda: "",
+      modernoDisponibilidad: [], modernoFotoGondola: null,
+      modernoImplementacionFdc: "", modernoFotoImplementacionFdc: null,
+      modernoImplementacionCompetencia: "", modernoFotoImplementacionCompetencia: null,
+      modernoPrecios: freshPreciosModerno(), modernoStock: [],
       gpsEnvio: null
     });
     render();
