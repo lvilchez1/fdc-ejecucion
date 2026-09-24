@@ -17,6 +17,9 @@
     prospeccion: "Prospección",
     moderno: "Visita Moderno"
   };
+  // Canal Moderno queda exclusivo para este ejecutivo: no ve el paso de
+  // Localidad ni la tarjeta de rutina (su único camino posible es Moderno).
+  const EJECUTIVO_MODERNO_EXCLUSIVO = "Ricardo Cantuarias";
 
   const PRICE_FIELDS = [
     { key: "fdc_4_750", label: "PVP FDC 4 750", channels: ["On", "Off"] },
@@ -381,6 +384,16 @@
     });
     return seen;
   }
+  function setEjecutivoSeleccionado(nombre) {
+    state.ejecutivo = nombre;
+    state.localidad = "";
+    state.cliente = "";
+    if (nombre === EJECUTIVO_MODERNO_EXCLUSIVO) {
+      state.rutina = "moderno";
+    } else if (state.rutina === "moderno") {
+      state.rutina = "";
+    }
+  }
   function setStep(idx) { state.stepIndex = idx; render(); root.scrollTop = 0; window.scrollTo(0, 0); }
   function goNext() {
     const steps = buildSteps();
@@ -396,7 +409,7 @@
     switch (stepName) {
       case "identificacion":
         if (!state.ejecutivo) errs.push("Selecciona qué ejecutivo está haciendo la visita.");
-        if (!state.localidad) errs.push("Selecciona la localidad en la que te encuentras.");
+        if (state.ejecutivo !== EJECUTIVO_MODERNO_EXCLUSIVO && !state.localidad) errs.push("Selecciona la localidad en la que te encuentras.");
         if (!state.rutina) errs.push("Selecciona qué tipo de rutina vas a registrar.");
         else if (state.rutina === "cartera") {
           if (!state.canal) errs.push("Selecciona el canal (On / Off).");
@@ -653,16 +666,18 @@
 
     nodes.push(fieldWrap("Ejecutivo", true,
       state.ejecutivos.length
-        ? el("select", { onchange: function (e) { state.ejecutivo = e.target.value; state.localidad = ""; state.cliente = ""; render(); } },
+        ? el("select", { onchange: function (e) { setEjecutivoSeleccionado(e.target.value); render(); } },
             [el("option", { value: "" }, ["Selecciona…"])].concat(state.ejecutivos.map(function (n) {
               const o = el("option", { value: n }, [n]);
               if (n === state.ejecutivo) o.setAttribute("selected", "true");
               return o;
             })))
-        : el("input", { type: "text", placeholder: "Escribe tu nombre", value: state.ejecutivo, oninput: function (e) { state.ejecutivo = e.target.value; }, onblur: function () { render(); } })
+        : el("input", { type: "text", placeholder: "Escribe tu nombre", value: state.ejecutivo, oninput: function (e) { state.ejecutivo = e.target.value; }, onblur: function () { setEjecutivoSeleccionado(state.ejecutivo); render(); } })
     ));
 
-    if (state.ejecutivo) {
+    const esModernoExclusivo = state.ejecutivo === EJECUTIVO_MODERNO_EXCLUSIVO;
+
+    if (state.ejecutivo && !esModernoExclusivo) {
       const localidadesEj = localidadesDelEjecutivo(state.ejecutivo);
       nodes.push(fieldWrap("Localidad", true,
         localidadesEj.length
@@ -677,13 +692,12 @@
       ));
     }
 
-    if (state.ejecutivo && state.localidad) {
+    if (state.ejecutivo && !esModernoExclusivo && state.localidad) {
       nodes.push(fieldWrap("Tipo de rutina", true, optionCards([
         { value: "cartera", label: RUTINA_LABELS.cartera },
         { value: "activacion", label: RUTINA_LABELS.activacion },
         { value: "matinal", label: RUTINA_LABELS.matinal },
-        { value: "prospeccion", label: RUTINA_LABELS.prospeccion },
-        { value: "moderno", label: RUTINA_LABELS.moderno }
+        { value: "prospeccion", label: RUTINA_LABELS.prospeccion }
       ], state.rutina, function (v) {
         if (v !== state.rutina) { state.canal = ""; state.cliente = ""; }
         state.rutina = v;
@@ -1115,7 +1129,7 @@
     Object.assign(state, {
       view: "form",
       stepIndex: 0, submitting: false, submitError: "", _gpsRequested: false,
-      ejecutivo: keepEjecutivo, localidad: keepLocalidad, rutina: "", canal: "", cliente: "",
+      ejecutivo: keepEjecutivo, localidad: keepLocalidad, rutina: keepEjecutivo === EJECUTIVO_MODERNO_EXCLUSIVO ? "moderno" : "", canal: "", cliente: "",
       portafolio: [], visibilidad: [], fotoVisibilidad: null,
       luminosoFDC: "", fotoLuminoso: null, implementacionFDC: "", fotoImplementacion: null,
       cartaCocteles: "", cartaCantidadCocteles: "", cartaBotellasSiNo: "",
